@@ -742,4 +742,86 @@ void EpubReaderActivity::renderStatusBar(const int orientedMarginRight, const in
   const bool showBookPercentage = SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::CHAPTER_PROGRESS_BAR;
   const bool showBattery = SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::NO_PROGRESS ||
                            SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::FULL ||
-                           SETTINGS.statusBar ==
+                           SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::BOOK_PROGRESS_BAR ||
+                           SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::CHAPTER_PROGRESS_BAR;
+  const bool showChapterTitle = SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::NO_PROGRESS ||
+                                SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::FULL ||
+                                SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::BOOK_PROGRESS_BAR ||
+                                SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::CHAPTER_PROGRESS_BAR;
+  const bool showBatteryPercentage =
+      SETTINGS.hideBatteryPercentage == CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_NEVER;
+
+  const auto screenHeight = renderer.getScreenHeight();
+  const auto textY = screenHeight - orientedMarginBottom - 4;
+  int progressTextWidth = 0;
+
+  const float sectionChapterProg = static_cast<float>(section->currentPage) / section->pageCount;
+  const float bookProgress = epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100;
+
+  if (showProgressText || showProgressPercentage || showBookPercentage) {
+    char progressStr[32];
+
+    if (showProgressPercentage) {
+      snprintf(progressStr, sizeof(progressStr), "%d/%d  %.0f%%", section->currentPage + 1, section->pageCount,
+               bookProgress);
+    } else if (showBookPercentage) {
+      snprintf(progressStr, sizeof(progressStr), "%.0f%%", bookProgress);
+    } else {
+      snprintf(progressStr, sizeof(progressStr), "%d/%d", section->currentPage + 1, section->pageCount);
+    }
+
+    progressTextWidth = renderer.getTextWidth(SMALL_FONT_ID, progressStr);
+    renderer.drawText(SMALL_FONT_ID, renderer.getScreenWidth() - orientedMarginRight - progressTextWidth, textY,
+                      progressStr);
+  }
+
+  if (showBookProgressBar) {
+    GUI.drawReadingProgressBar(renderer, static_cast<size_t>(bookProgress));
+  }
+
+  if (showChapterProgressBar) {
+    const float chapterProgress =
+        (section->pageCount > 0) ? (static_cast<float>(section->currentPage + 1) / section->pageCount) * 100 : 0;
+    GUI.drawReadingProgressBar(renderer, static_cast<size_t>(chapterProgress));
+  }
+
+  if (showBattery) {
+    GUI.drawBattery(renderer, Rect{orientedMarginLeft + 1, textY, metrics.batteryWidth, metrics.batteryHeight},
+                    showBatteryPercentage);
+  }
+
+  if (showChapterTitle) {
+    const int rendererableScreenWidth = renderer.getScreenWidth() - orientedMarginLeft - orientedMarginRight;
+
+    const int batterySize = showBattery ? (showBatteryPercentage ? 50 : 20) : 0;
+    const int titleMarginLeft = batterySize + 30;
+    const int titleMarginRight = progressTextWidth + 30;
+
+    int titleMarginLeftAdjusted = std::max(titleMarginLeft, titleMarginRight);
+    int availableTitleSpace = rendererableScreenWidth - 2 * titleMarginLeftAdjusted;
+    const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
+
+    std::string title;
+    int titleWidth;
+    if (tocIndex == -1) {
+      title = "Unnamed";
+      titleWidth = renderer.getTextWidth(SMALL_FONT_ID, "Unnamed");
+    } else {
+      const auto tocItem = epub->getTocItem(tocIndex);
+      title = tocItem.title;
+      titleWidth = renderer.getTextWidth(SMALL_FONT_ID, title.c_str());
+      if (titleWidth > availableTitleSpace) {
+        availableTitleSpace = rendererableScreenWidth - titleMarginLeft - titleMarginRight;
+        titleMarginLeftAdjusted = titleMarginLeft;
+      }
+      if (titleWidth > availableTitleSpace) {
+        title = renderer.truncatedText(SMALL_FONT_ID, title.c_str(), availableTitleSpace);
+        titleWidth = renderer.getTextWidth(SMALL_FONT_ID, title.c_str());
+      }
+    }
+
+    renderer.drawText(SMALL_FONT_ID,
+                      titleMarginLeftAdjusted + orientedMarginLeft + (availableTitleSpace - titleWidth) / 2, textY,
+                      title.c_str());
+  }
+}
