@@ -287,17 +287,16 @@ void EpubReaderActivity::loop() {
   // --- HANDLE NAVIGATION BUTTONS ---
 
   const bool usePressForPageTurn = !SETTINGS.longPressChapterSkip;
-  
+
   // Logic to detect navigation trigger based on current mapping
-  const bool prevTriggered = usePressForPageTurn ? mappedInput.wasPressed(btnNavPrev)
-                                                 : mappedInput.wasReleased(btnNavPrev);
+  const bool prevTriggered =
+      usePressForPageTurn ? mappedInput.wasPressed(btnNavPrev) : mappedInput.wasReleased(btnNavPrev);
 
   const bool powerPageTurn = SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PAGE_TURN &&
                              mappedInput.wasReleased(MappedInputManager::Button::Power);
 
-  const bool nextTriggered = usePressForPageTurn
-                                 ? (mappedInput.wasPressed(btnNavNext) || powerPageTurn)
-                                 : (mappedInput.wasReleased(btnNavNext) || powerPageTurn);
+  const bool nextTriggered = usePressForPageTurn ? (mappedInput.wasPressed(btnNavNext) || powerPageTurn)
+                                                 : (mappedInput.wasReleased(btnNavNext) || powerPageTurn);
 
   if (!prevTriggered && !nextTriggered) {
     return;
@@ -312,8 +311,8 @@ void EpubReaderActivity::loop() {
 
   // Note: For Chapter Skip, we use the held time of whichever button triggered the nav
   // This is a slight simplification, assuming only one nav button is pressed at a time.
-  const bool isHoldingNav = mappedInput.isPressed(btnNavPrev) || mappedInput.isPressed(btnNavNext); 
-  // We check mappedInput.getHeldTime() but technically we should check specific buttons. 
+  const bool isHoldingNav = mappedInput.isPressed(btnNavPrev) || mappedInput.isPressed(btnNavNext);
+  // We check mappedInput.getHeldTime() but technically we should check specific buttons.
   // However, getHeldTime() returns the time of the *last state change*, which works for single presses.
   // For robustness, we check the global held time if a button is active.
   const bool skipChapter = SETTINGS.longPressChapterSkip && mappedInput.getHeldTime() > skipChapterMs;
@@ -506,9 +505,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
         exitActivity();
         enterNewActivity(new KOReaderSyncActivity(
             renderer, mappedInput, epub, epub->getPath(), currentSpineIndex, currentPage, totalPages,
-            [this]() {
-              pendingSubactivityExit = true;
-            },
+            [this]() { pendingSubactivityExit = true; },
             [this](int newSpineIndex, int newPage) {
               if (currentSpineIndex != newSpineIndex || (section && section->currentPage != newPage)) {
                 currentSpineIndex = newSpineIndex;
