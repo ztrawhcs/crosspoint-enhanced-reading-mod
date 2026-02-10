@@ -103,14 +103,14 @@ void drawHelpBox(const GfxRenderer& renderer, int x, int y, const char* text, Bo
 
   // Draw each line
   for (size_t i = 0; i < lines.size(); i++) {
-    int lineX = drawX + 5; // Default left alignment inside box
-    
+    int lineX = drawX + 5;  // Default left alignment inside box
+
     // Calculate center alignment relative to the box width if requested
     if (align == BoxAlign::CENTER) {
-        int lineWidth = renderer.getTextWidth(SMALL_FONT_ID, lines[i].c_str());
-        lineX = drawX + (boxWidth - lineWidth) / 2;
+      int lineWidth = renderer.getTextWidth(SMALL_FONT_ID, lines[i].c_str());
+      lineX = drawX + (boxWidth - lineWidth) / 2;
     }
-    
+
     renderer.drawText(SMALL_FONT_ID, lineX, y + 5 + (i * lineHeight), lines[i].c_str());
   }
 }
