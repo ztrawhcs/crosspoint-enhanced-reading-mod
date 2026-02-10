@@ -879,26 +879,33 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     const int w = renderer.getScreenWidth();
     const int h = renderer.getScreenHeight();
 
+    // Dim the reading background slightly if possible, or just draw on top
+    // Since we don't have alpha, we just draw readable boxes.
+
+    // NOTE: Coordinates are RAW screen pixels, need to respect orientation
+    // But since we are drawing absolute button labels, we want logical positions?
+    // Actually, renderer is already rotated. So (0,0) is top-left of *current view*.
+
     // Draw Center "Dismiss" instruction
     drawHelpBox(renderer, w / 2 - 50, h / 2 - 20, "PRESS ANY KEY\nTO DISMISS");
 
     if (SETTINGS.orientation == CrossPointSettings::ORIENTATION::PORTRAIT) {
       // PORTRAIT LABELS
       // Front Left (Bottom Left)
-      drawHelpBox(renderer, 20, h - 80, "1x: Size -\n2x: Align\nHold: Spacing");
+      drawHelpBox(renderer, w - 160, h - 80, "1x: Size -\n2x: Align\nHold: Spacing", true);
 
       // Front Right (Bottom Right)
-      drawHelpBox(renderer, w - 20, h - 80, "1x: Size +\n2x: AntiAlias\nHold: ROTATE", true);
+      drawHelpBox(renderer, w - 10, h - 80, "1x: Size +\n2x: AntiAlias\nHold: ROTATE", true);
 
     } else {
       // LANDSCAPE CCW LABELS
 
       // Top Buttons (Top Edge - configuration)
-      // Left (was Left)
-      drawHelpBox(renderer, 20, 20, "1x: Size -\n2x: Align\nHold: Spacing");
+      // Left (was Left) - Top Center (Right aligned)
+      drawHelpBox(renderer, w / 2 - 5, 20, "1x: Size -\n2x: Align\nHold: Spacing", true);
 
-      // Right (was Right)
-      drawHelpBox(renderer, w - 20, 20, "1x: Size +\n2x: AntiAlias\nHold: ROTATE", true);
+      // Right (was Right) - Top Center (Left aligned)
+      drawHelpBox(renderer, w / 2 + 5, 20, "1x: Size +\n2x: AntiAlias\nHold: ROTATE", false);
     }
   }
 
