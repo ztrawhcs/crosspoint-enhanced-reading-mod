@@ -4,6 +4,9 @@
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
+#include <vector>
+#include <string>
+#include <sstream>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -59,18 +62,41 @@ void applyReaderOrientation(GfxRenderer& renderer, const uint8_t orientation) {
   }
 }
 
-// Helper to draw a text box with a background to make it readable over text
-void drawHelpBox(GfxRenderer& renderer, int x, int y, const char* text, bool alignRight = false) {
-  int w = renderer.getTextWidth(SMALL_FONT_ID, text) + 10;
-  int h = 40;  // approximate height for 3 lines
-  int drawX = alignRight ? (x - w) : x;
+// Helper to draw multi-line text cleanly
+void drawHelpBox(const GfxRenderer& renderer, int x, int y, const char* text, bool alignRight = false) {
+  // Split text into lines
+  std::vector<std::string> lines;
+  std::stringstream ss(text);
+  std::string line;
+  int maxWidth = 0;
+  
+  while (std::getline(ss, line, '\n')) {
+      lines.push_back(line);
+      int w = renderer.getTextWidth(SMALL_FONT_ID, line.c_str());
+      if (w > maxWidth) maxWidth = w;
+  }
 
-  // Fill White (Clear background) - false = white/clear
-  renderer.fillRect(drawX, y, w, h, false);
-  // Draw Border Black - true = black/set
-  renderer.drawRect(drawX, y, w, h, true);
-  // Draw Text Black
-  renderer.drawText(SMALL_FONT_ID, drawX + 5, y + 5, text);
+  int lineHeight = 20; // Approx height for SMALL_FONT_ID
+  int boxWidth = maxWidth + 10;
+  int boxHeight = (lines.size() * lineHeight) + 10;
+  
+  int drawX = alignRight ? (x - boxWidth) : x;
+  int drawY = y;
+
+  // Ensure we don't draw off the bottom edge
+  if (drawY + boxHeight > renderer.getScreenHeight()) {
+      drawY = renderer.getScreenHeight() - boxHeight - 5;
+  }
+
+  // Fill White (Clear background)
+  renderer.fillRect(drawX, drawY, boxWidth, boxHeight, false);
+  // Draw Border Black
+  renderer.drawRect(drawX, drawY, boxWidth, boxHeight, true);
+  
+  // Draw each line
+  for (size_t i = 0; i < lines.size(); i++) {
+      renderer.drawText(SMALL_FONT_ID, drawX + 5, drawY + 5 + (i * lineHeight), lines[i].c_str());
+  }
 }
 
 }  // namespace
@@ -852,13 +878,6 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     const int w = renderer.getScreenWidth();
     const int h = renderer.getScreenHeight();
 
-    // Dim the reading background slightly if possible, or just draw on top
-    // Since we don't have alpha, we just draw readable boxes.
-
-    // NOTE: Coordinates are RAW screen pixels, need to respect orientation
-    // But since we are drawing absolute button labels, we want logical positions?
-    // Actually, renderer is already rotated. So (0,0) is top-left of *current view*.
-
     // Draw Center "Dismiss" instruction
     drawHelpBox(renderer, w / 2 - 50, h / 2 - 20, "PRESS ANY KEY\nTO DISMISS");
 
@@ -866,26 +885,33 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       // PORTRAIT LABELS
 
       // Side Buttons (Right Edge)
-      drawHelpBox(renderer, w - 10, 50, "Prev Page", true);
-      drawHelpBox(renderer, w - 10, h - 150, "Next Page", true);
+      // Top button (Prev)
+      drawHelpBox(renderer, w - 10, 100, "Prev Page", true);
+      
+      // Bottom button (Next) - adjusted to be further down
+      drawHelpBox(renderer, w - 10, 250, "Next Page", true);
 
       // Front Left (Bottom Left)
-      drawHelpBox(renderer, 20, h - 60, "1x: Size -\n2x: Align\nHold: Space");
+      drawHelpBox(renderer, 20, h - 80, "1x: Size -\n2x: Align\nHold: Space");
 
       // Front Right (Bottom Right)
-      drawHelpBox(renderer, w - 20, h - 60, "1x: Size +\n2x: AntiAlias\nHold: ROTATE", true);
+      drawHelpBox(renderer, w - 20, h - 80, "1x: Size +\n2x: AntiAlias\nHold: ROTATE", true);
 
     } else {
       // LANDSCAPE CCW LABELS
-      // Screen is rotated. Top is physical Side buttons. Right is physical Front buttons.
+      
+      // Top Buttons (Top Edge - configuration)
+      // Left (was Left)
+      drawHelpBox(renderer, 20, 20, "1x: Size -\n2x: Align\nHold: Space");
+      
+      // Right (was Right)
+      drawHelpBox(renderer, w - 20, 20, "1x: Size +\n2x: AntiAlias\nHold: ROTATE", true);
 
-      // Top Buttons (Top Edge)
-      drawHelpBox(renderer, 20, 10, "1x: Size -\n2x: Align\nHold: Space");
-      drawHelpBox(renderer, w - 20, 10, "1x: Size +\n2x: AntiAlias\nHold: ROTATE", true);
-
-      // Right Buttons (Right Edge)
-      drawHelpBox(renderer, w - 10, 50, "Prev Page", true);
-      drawHelpBox(renderer, w - 10, h - 50, "Next Page", true);
+      // Right Buttons (Right Edge - navigation)
+      // Top (was Prev)
+      drawHelpBox(renderer, w - 10, 80, "Prev Page", true);
+      // Bottom (was Next)
+      drawHelpBox(renderer, w - 10, 220, "Next Page", true);
     }
   }
 
