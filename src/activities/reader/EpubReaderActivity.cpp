@@ -175,6 +175,9 @@ void EpubReaderActivity::onEnter() {
 void EpubReaderActivity::onExit() {
   ActivityWithSubactivity::onExit();
 
+  // Disable fading fix when leaving (safer)
+  renderer.setFadingFix(false);
+
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
 
   xSemaphoreTake(renderingMutex, portMAX_DELAY);
@@ -895,12 +898,12 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     const int h = renderer.getScreenHeight();
 
     // Draw Center "Dismiss" instruction
-    drawHelpBox(renderer, w / 2, 75, "PRESS ANY KEY\nTO DISMISS", BoxAlign::CENTER);
+    drawHelpBox(renderer, w / 2 + 25, 75, "PRESS ANY KEY\nTO DISMISS", BoxAlign::CENTER);
 
     if (SETTINGS.orientation == CrossPointSettings::ORIENTATION::PORTRAIT) {
       // PORTRAIT LABELS
-      // Front Left (Bottom Left) - tighter spacing
-      drawHelpBox(renderer, w - 155, h - 80, "1x: Text size –\nHold: Spacing\n2x: Alignment", BoxAlign::RIGHT);
+      // Front Left (Bottom Left) - Moved further left to w-185
+      drawHelpBox(renderer, w - 185, h - 80, "1x: Text size –\nHold: Spacing\n2x: Alignment", BoxAlign::RIGHT);
 
       // Front Right (Bottom Right)
       drawHelpBox(renderer, w - 10, h - 80, "1x: Text size +\nHold: Rotate\n2x: AntiAlias", BoxAlign::RIGHT);
@@ -909,10 +912,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       // LANDSCAPE CCW LABELS
 
       // Top Buttons (Top Edge - configuration)
-      // Left (was Left) - shifted right by 20 (5 more than before)
+      // Left (was Left) - shifted right by 20
       drawHelpBox(renderer, w / 2 + 20, 20, "1x: Text size –\nHold: Spacing\n2x: Alignment", BoxAlign::RIGHT);
 
-      // Right (was Right) - shifted right by 30 (5 more than before)
+      // Right (was Right) - shifted right by 30
       drawHelpBox(renderer, w / 2 + 30, 20, "1x: Text size +\nHold: Rotate\n2x: AntiAlias", BoxAlign::LEFT);
     }
   }
@@ -923,8 +926,8 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const_cast<GfxRenderer&>(renderer).setFadingFix(true);
 
   if (pagesUntilFullRefresh <= 1) {
-    // FORCE FULL REFRESH to clear DC bias / gray haze
-    renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+    // Revert to HALF_REFRESH to test "Soft" cleaning
+    renderer.displayBuffer(HalDisplay::HALF_REFRESH);
     pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
   } else {
     renderer.displayBuffer();
