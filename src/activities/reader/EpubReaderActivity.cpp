@@ -128,9 +128,6 @@ void EpubReaderActivity::onEnter() {
   // Reset help overlay state when entering a book
   showHelpOverlay = false;
 
-  // ENABLE FADING FIX: Forces screen power-off after render to prevent gray haze
-  renderer.setFadingFix(true);
-
   if (!epub) {
     return;
   }
@@ -178,7 +175,7 @@ void EpubReaderActivity::onEnter() {
 void EpubReaderActivity::onExit() {
   ActivityWithSubactivity::onExit();
 
-  // Disable fading fix when leaving (in case other apps don't expect it)
+  // Disable fading fix when leaving (safer)
   renderer.setFadingFix(false);
 
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
@@ -923,6 +920,11 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     }
   }
 
+  // --- SAFE FADING FIX IMPLEMENTATION ---
+  // Enable fading fix (shutdown after render) ONLY for this specific update
+  // This avoids the boot loop issue caused by global enabling in onEnter()
+  const_cast<GfxRenderer&>(renderer).setFadingFix(true);
+
   if (pagesUntilFullRefresh <= 1) {
     renderer.displayBuffer(HalDisplay::HALF_REFRESH);
     pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
@@ -930,6 +932,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     renderer.displayBuffer();
     pagesUntilFullRefresh--;
   }
+
+  // Disable it immediately after to ensure safety for other UI elements
+  // const_cast<GfxRenderer&>(renderer).setFadingFix(false);
 
   renderer.storeBwBuffer();
 
