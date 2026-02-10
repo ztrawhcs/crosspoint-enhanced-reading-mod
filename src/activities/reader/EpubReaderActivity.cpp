@@ -128,6 +128,9 @@ void EpubReaderActivity::onEnter() {
   // Reset help overlay state when entering a book
   showHelpOverlay = false;
 
+  // ENABLE FADING FIX: Forces screen power-off after render to prevent gray haze
+  renderer.setFadingFix(true);
+
   if (!epub) {
     return;
   }
@@ -174,6 +177,9 @@ void EpubReaderActivity::onEnter() {
 
 void EpubReaderActivity::onExit() {
   ActivityWithSubactivity::onExit();
+
+  // Disable fading fix when leaving (in case other apps don't expect it)
+  renderer.setFadingFix(false);
 
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
 
@@ -900,7 +906,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     if (SETTINGS.orientation == CrossPointSettings::ORIENTATION::PORTRAIT) {
       // PORTRAIT LABELS
       // Front Left (Bottom Left) - tighter spacing
-      drawHelpBox(renderer, w - 130, h - 80, "1x: Text size –\nHold: Spacing\n2x: Alignment", BoxAlign::RIGHT);
+      drawHelpBox(renderer, w - 120, h - 80, "1x: Text size –\nHold: Spacing\n2x: Alignment", BoxAlign::RIGHT);
 
       // Front Right (Bottom Right)
       drawHelpBox(renderer, w - 10, h - 80, "1x: Text size +\nHold: Rotate\n2x: AntiAlias", BoxAlign::RIGHT);
@@ -909,11 +915,11 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       // LANDSCAPE CCW LABELS
 
       // Top Buttons (Top Edge - configuration)
-      // Left (was Left) - shifted right by 15
-      drawHelpBox(renderer, w / 2 + 15, 20, "1x: Text size –\nHold: Spacing\n2x: Alignment", BoxAlign::RIGHT);
+      // Left (was Left) - shifted right by 20 (5 more than before)
+      drawHelpBox(renderer, w / 2 + 20, 20, "1x: Text size –\nHold: Spacing\n2x: Alignment", BoxAlign::RIGHT);
 
-      // Right (was Right) - shifted right by 15
-      drawHelpBox(renderer, w / 2 + 25, 20, "1x: Text size +\nHold: Rotate\n2x: AntiAlias", BoxAlign::LEFT);
+      // Right (was Right) - shifted right by 30 (5 more than before)
+      drawHelpBox(renderer, w / 2 + 30, 20, "1x: Text size +\nHold: Rotate\n2x: AntiAlias", BoxAlign::LEFT);
     }
   }
 
