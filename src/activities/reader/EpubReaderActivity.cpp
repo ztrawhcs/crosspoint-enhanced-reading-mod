@@ -67,11 +67,7 @@ void applyReaderOrientation(GfxRenderer& renderer, const uint8_t orientation) {
 enum class BoxAlign { LEFT, RIGHT, CENTER };
 
 // Helper to draw multi-line text cleanly
-void drawHelpBox(const GfxRenderer& renderer, int x, int y, const char* text, BoxAlign align) {
-  // Use NotoSans 14 for better readability
-  const auto FONT_ID = NOTOSANS_14_FONT_ID;
-  const int LINE_HEIGHT_PX = 26;  // Adjusted for larger font
-
+void drawHelpBox(const GfxRenderer& renderer, int x, int y, const char* text, BoxAlign align, int32_t fontId, int lineHeight) {
   // Split text into lines
   std::vector<std::string> lines;
   std::stringstream ss(text);
@@ -80,12 +76,17 @@ void drawHelpBox(const GfxRenderer& renderer, int x, int y, const char* text, Bo
 
   while (std::getline(ss, line, '\n')) {
     lines.push_back(line);
-    int w = renderer.getTextWidth(FONT_ID, line.c_str());
+    int w = renderer.getTextWidth(fontId, line.c_str());
     if (w > maxWidth) maxWidth = w;
   }
 
-  int boxWidth = maxWidth + 16;  // Padding
-  int boxHeight = (lines.size() * LINE_HEIGHT_PX) + 16;
+  int padding = 14; 
+  if (fontId == SMALL_FONT_ID) {
+      padding = 10; // Slightly less padding for the smaller font
+  }
+
+  int boxWidth = maxWidth + padding;
+  int boxHeight = (lines.size() * lineHeight) + padding;
 
   int drawX = x;
   if (align == BoxAlign::RIGHT) {
@@ -106,15 +107,15 @@ void drawHelpBox(const GfxRenderer& renderer, int x, int y, const char* text, Bo
 
   // Draw each line
   for (size_t i = 0; i < lines.size(); i++) {
-    int lineX = drawX + 8;  // Default left alignment inside box
+    int lineX = drawX + (padding / 2);  // Default left alignment inside box
 
     // Calculate center alignment relative to the box width if requested
     if (align == BoxAlign::CENTER) {
-      int lineWidth = renderer.getTextWidth(FONT_ID, lines[i].c_str());
+      int lineWidth = renderer.getTextWidth(fontId, lines[i].c_str());
       lineX = drawX + (boxWidth - lineWidth) / 2;
     }
 
-    renderer.drawText(FONT_ID, lineX, y + 8 + (i * LINE_HEIGHT_PX), lines[i].c_str());
+    renderer.drawText(fontId, lineX, y + (padding / 2) + (i * lineHeight), lines[i].c_str());
   }
 }
 
@@ -130,11 +131,6 @@ void EpubReaderActivity::onEnter() {
 
   // Reset help overlay state when entering a book
   showHelpOverlay = false;
-
-  // ENABLE GLOBAL FADING FIX
-  // This ensures the screen power is cut after EVERY render operation.
-  // This prevents the "Gray Haze" (VCOM drift) without needing aggressive triple-flashes.
-  renderer.setFadingFix(true);
 
   if (!epub) {
     return;
@@ -183,9 +179,6 @@ void EpubReaderActivity::onEnter() {
 void EpubReaderActivity::onExit() {
   ActivityWithSubactivity::onExit();
 
-  // Disable fading fix when leaving to return to standard behavior
-  renderer.setFadingFix(false);
-
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
 
   xSemaphoreTake(renderingMutex, portMAX_DELAY);
@@ -210,19 +203,20 @@ void EpubReaderActivity::loop() {
   }
 
   // --- HELP OVERLAY INTERCEPTION ---
+  // If overlay is showing, ANY button press dismisses it.
   if (showHelpOverlay) {
-    // Dismiss on ANY button press (including Power)
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
         mappedInput.wasReleased(MappedInputManager::Button::Back) ||
         mappedInput.wasReleased(MappedInputManager::Button::Left) ||
         mappedInput.wasReleased(MappedInputManager::Button::Right) ||
         mappedInput.wasReleased(MappedInputManager::Button::PageBack) ||
         mappedInput.wasReleased(MappedInputManager::Button::PageForward) ||
-        mappedInput.wasReleased(MappedInputManager::Button::Power)) {
+        mappedInput.wasReleased(MappedInputManager::Button::Power)) {  // Added Power button
       showHelpOverlay = false;
       updateRequired = true;
       return;
     }
+    // Block other logic while overlay is shown
     return;
   }
 
@@ -905,41 +899,48 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     const int w = renderer.getScreenWidth();
     const int h = renderer.getScreenHeight();
 
-    // Draw Center "Dismiss" instruction
-    // Landscape: y = 300 (lowered to be below buttons)
-    // Portrait: y = h / 2 (centered vertically)
-    int dismissY = (SETTINGS.orientation == CrossPointSettings::ORIENTATION::PORTRAIT) ? h / 2 : 300;
-
-    // Landscape adjustment for center
-    int dismissX = (SETTINGS.orientation == CrossPointSettings::ORIENTATION::PORTRAIT) ? w / 2 : w / 2 + 25;
-
-    drawHelpBox(renderer, dismissX, dismissY, "PRESS ANY KEY\nTO DISMISS", BoxAlign::CENTER);
+    // Determine font and positioning based on orientation
+    int32_t overlayFontId;
+    int overlayLineHeight;
 
     if (SETTINGS.orientation == CrossPointSettings::ORIENTATION::PORTRAIT) {
-      // PORTRAIT LABELS
-      // Front Left (Bottom Left) - Adjusted for larger font and correct gap (w - 175)
-      drawHelpBox(renderer, w - 175, h - 80, "1x: Text size –\nHold: Spacing\n2x: Alignment", BoxAlign::RIGHT);
+      // PORTRAIT: Use smaller font to prevent overlap
+      overlayFontId = SMALL_FONT_ID;
+      overlayLineHeight = 20;
+
+      // Draw Center "Dismiss" instruction - Centered vertically
+      drawHelpBox(renderer, w / 2, h / 2, "PRESS ANY KEY\nTO DISMISS", BoxAlign::CENTER, overlayFontId,
+                  overlayLineHeight);
+
+      // Front Left (Bottom Left) - Reverted to w-150 for smaller font
+      drawHelpBox(renderer, w - 150, h - 80, "1x: Text size –\nHold: Spacing\n2x: Alignment", BoxAlign::RIGHT,
+                  overlayFontId, overlayLineHeight);
 
       // Front Right (Bottom Right)
-      drawHelpBox(renderer, w - 10, h - 80, "1x: Text size +\nHold: Rotate\n2x: AntiAlias", BoxAlign::RIGHT);
+      drawHelpBox(renderer, w - 10, h - 80, "1x: Text size +\nHold: Rotate\n2x: AntiAlias", BoxAlign::RIGHT,
+                  overlayFontId, overlayLineHeight);
 
     } else {
-      // LANDSCAPE CCW LABELS
+      // LANDSCAPE: Use larger font
+      overlayFontId = NOTOSANS_14_FONT_ID;
+      overlayLineHeight = 26;
+
+      // Draw Center "Dismiss" instruction - Below buttons
+      drawHelpBox(renderer, w / 2 + 25, 300, "PRESS ANY KEY\nTO DISMISS", BoxAlign::CENTER, overlayFontId,
+                  overlayLineHeight);
 
       // Top Buttons (Top Edge - configuration)
       // Left (was Left) - shifted right by 20
-      drawHelpBox(renderer, w / 2 + 20, 20, "1x: Text size –\nHold: Spacing\n2x: Alignment", BoxAlign::RIGHT);
+      drawHelpBox(renderer, w / 2 + 20, 20, "1x: Text size –\nHold: Spacing\n2x: Alignment", BoxAlign::RIGHT,
+                  overlayFontId, overlayLineHeight);
 
       // Right (was Right) - shifted right by 30
-      drawHelpBox(renderer, w / 2 + 30, 20, "1x: Text size +\nHold: Rotate\n2x: AntiAlias", BoxAlign::LEFT);
+      drawHelpBox(renderer, w / 2 + 30, 20, "1x: Text size +\nHold: Rotate\n2x: AntiAlias", BoxAlign::LEFT,
+                  overlayFontId, overlayLineHeight);
     }
   }
 
-  // --- STANDARD REFRESH + GLOBAL FADING FIX ---
-  // We use HALF_REFRESH to avoid the triple-flash "seizure".
-  // The global 'renderer.setFadingFix(true)' in onEnter() ensures VCOM is cleared
-  // after this render, preventing the gray haze.
-
+  // --- STANDARD REFRESH (Reverted to original behavior) ---
   if (pagesUntilFullRefresh <= 1) {
     renderer.displayBuffer(HalDisplay::HALF_REFRESH);
     pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
