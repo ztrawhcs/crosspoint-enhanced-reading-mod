@@ -108,9 +108,9 @@ void drawHelpBox(const GfxRenderer& renderer, int x, int y, const char* text, Bo
   for (size_t i = 0; i < lines.size(); i++) {
     // ALWAYS center text horizontally within the box
     int lineWidth = renderer.getTextWidth(fontId, lines[i].c_str());
-    int lineX = drawX + (boxWidth - lineWidth) / 2;
+    int lineX_centered = drawX + (boxWidth - lineWidth) / 2;
 
-    renderer.drawText(fontId, lineX, y + (padding / 2) + (i * lineHeight), lines[i].c_str());
+    renderer.drawText(fontId, lineX_centered, y + (padding / 2) + (i * lineHeight), lines[i].c_str());
   }
 }
 
@@ -227,10 +227,6 @@ void EpubReaderActivity::loop() {
   static unsigned long lastBackRelease = 0;
   static bool waitingForBack = false;
 
-  // Double click state for Power button (Landscape Dark Mode)
-  static unsigned long lastPowerRelease = 0;
-  static bool waitingForPower = false;
-
   if (subActivity) {
     subActivity->loop();
     if (pendingSubactivityExit) {
@@ -324,36 +320,6 @@ void EpubReaderActivity::loop() {
     waitingForBack = false;
     onGoHome();
     return;
-  }
-
-  // --- POWER BUTTON LOGIC (Landscape Only Double Click) ---
-  bool powerPressed = mappedInput.wasReleased(MappedInputManager::Button::Power);
-
-  if (powerPressed) {
-    // Check if we are in landscape (Power button is on the left)
-    bool isLandscape = (SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CW ||
-                        SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CCW);
-
-    if (isLandscape) {
-      if (waitingForPower && (millis() - lastPowerRelease < doubleClickMs)) {
-        // Double Click Power in Landscape: Toggle Dark Mode
-        waitingForPower = false;
-        isNightMode = !isNightMode;
-        GUI.drawPopup(renderer, isNightMode ? "Dark Mode" : "Light Mode");
-        clearPopupTimer = millis() + 1000;
-        updateRequired = true;
-        return;  // Consume the event
-      } else {
-        waitingForPower = true;
-        lastPowerRelease = millis();
-        // Don't return yet, we might want to allow default single-press behavior if no second click comes...
-        // But standard power behavior handles sleep/page turn.
-        // To avoid double-handling, we effectively consume the single press here
-        // and would need to re-trigger it after timeout, OR we accept that
-        // trying to double-click might trigger one page turn first.
-        // Given the complexity, let's allow the single press to pass through below for now.
-      }
-    }
   }
 
   // =========================================================================================
@@ -550,9 +516,6 @@ void EpubReaderActivity::loop() {
   const bool prevTriggered =
       usePressForPageTurn ? mappedInput.wasPressed(btnNavPrev) : mappedInput.wasReleased(btnNavPrev);
 
-  // Power button page turn handled separately or passed through?
-  // We already detected double-click power above.
-  // Standard logic:
   const bool powerPageTurn = SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PAGE_TURN &&
                              mappedInput.wasReleased(MappedInputManager::Button::Power);
   const bool nextTriggered = usePressForPageTurn ? (mappedInput.wasPressed(btnNavNext) || powerPageTurn)
@@ -979,24 +942,29 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 
     if (SETTINGS.orientation == CrossPointSettings::ORIENTATION::PORTRAIT) {
       // PORTRAIT LABELS
-      // Front Left (Bottom Left) - Corrected to w-160 for clean gap with small font
-      // Added "2x Back: Dark" to prompt user
-      drawHelpBox(renderer, w - 160, h - 80, "1x: Text size –\nHold: Spacing\n2x: Alignment\n2x Back: Dark",
-                  BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
+      // Far Left Box (Back Button) -> Dark Mode
+      drawHelpBox(renderer, 10, h - 80, "2x: Dark", BoxAlign::LEFT, overlayFontId, overlayLineHeight);
 
-      // Front Right (Bottom Right)
+      // Front Left (Left Rocker) -> Spacing/Align
+      drawHelpBox(renderer, w - 160, h - 80, "1x: Text size –\nHold: Spacing\n2x: Alignment", BoxAlign::RIGHT,
+                  overlayFontId, overlayLineHeight);
+
+      // Front Right (Right Rocker)
       drawHelpBox(renderer, w - 10, h - 80, "1x: Text size +\nHold: Rotate\n2x: AntiAlias", BoxAlign::RIGHT,
                   overlayFontId, overlayLineHeight);
 
     } else {
       // LANDSCAPE CCW LABELS
 
-      // Top Buttons (Top Edge - configuration)
-      // Left (was Left) - shifted right by 20
-      drawHelpBox(renderer, w / 2 + 20, 20, "1x: Text size –\nHold: Spacing\n2x: Alignment\n2x Pwr: Dark",
-                  BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
+      // Top Left Corner (Back Button) -> Dark Mode
+      drawHelpBox(renderer, 20, 20, "2x Back: Dark", BoxAlign::LEFT, overlayFontId, overlayLineHeight);
 
-      // Right (was Right) - shifted right by 30
+      // Top Right Cluster (Buttons)
+      // Left part of cluster
+      drawHelpBox(renderer, w / 2 + 20, 20, "1x: Text size –\nHold: Spacing\n2x: Alignment", BoxAlign::RIGHT,
+                  overlayFontId, overlayLineHeight);
+
+      // Right part of cluster
       drawHelpBox(renderer, w / 2 + 30, 20, "1x: Text size +\nHold: Rotate\n2x: AntiAlias", BoxAlign::LEFT,
                   overlayFontId, overlayLineHeight);
     }
