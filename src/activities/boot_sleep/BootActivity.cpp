@@ -20,7 +20,7 @@ void BootActivity::onEnter() {
   renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + 95, "BOOTING");
 
   // Custom Version Number
-  renderer.drawCenteredText(SMALL_FONT_ID, pageHeight - 30, "1.0.0-dev-ztrawhcs.1");
+  renderer.drawCenteredText(SMALL_FONT_ID, pageHeight - 30, "1.0.0-dev-ztrawhcs.2");
 
   renderer.displayBuffer();
 }
