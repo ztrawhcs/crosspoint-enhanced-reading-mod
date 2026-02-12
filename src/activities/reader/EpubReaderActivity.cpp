@@ -534,24 +534,24 @@ void EpubReaderActivity::loop() {
 
   // --- HANDLE NAVIGATION BUTTONS ---
   const bool usePressForPageTurn = !SETTINGS.longPressChapterSkip;
-  
+
   bool prevTriggered = usePressForPageTurn ? mappedInput.wasPressed(btnNavPrev) : mappedInput.wasReleased(btnNavPrev);
-  
+
   const bool powerPageTurn = SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PAGE_TURN &&
                              mappedInput.wasReleased(MappedInputManager::Button::Power);
-  
+
   bool nextTriggered = usePressForPageTurn ? (mappedInput.wasPressed(btnNavNext) || powerPageTurn)
-                                                 : (mappedInput.wasReleased(btnNavNext) || powerPageTurn);
+                                           : (mappedInput.wasReleased(btnNavNext) || powerPageTurn);
 
   // FALLBACK: In OFF mode, the formatting buttons revert to Page Turns
   if (SETTINGS.buttonModMode == CrossPointSettings::MOD_OFF) {
-      if (usePressForPageTurn) {
-          if (mappedInput.wasPressed(btnFormatDec)) prevTriggered = true;
-          if (mappedInput.wasPressed(btnFormatInc)) nextTriggered = true;
-      } else {
-          if (mappedInput.wasReleased(btnFormatDec)) prevTriggered = true;
-          if (mappedInput.wasReleased(btnFormatInc)) nextTriggered = true;
-      }
+    if (usePressForPageTurn) {
+      if (mappedInput.wasPressed(btnFormatDec)) prevTriggered = true;
+      if (mappedInput.wasPressed(btnFormatInc)) nextTriggered = true;
+    } else {
+      if (mappedInput.wasReleased(btnFormatDec)) prevTriggered = true;
+      if (mappedInput.wasReleased(btnFormatInc)) nextTriggered = true;
+    }
   }
 
   if (!prevTriggered && !nextTriggered) {
@@ -772,11 +772,11 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       // Toggle mode and save
       SETTINGS.buttonModMode = (SETTINGS.buttonModMode + 1) % CrossPointSettings::BUTTON_MOD_MODE_COUNT;
       SETTINGS.saveToFile();
-      
+
       // Re-enter the menu to update the display text immediately (optional but nice)
       // or just set updateRequired = true in the menu loop if we could reach it easily.
-      // Since the menu activity is handling this directly in its own loop, this case is actually unreachable 
-      // via the callback mechanism I set up in EpubReaderMenuActivity.cpp. 
+      // Since the menu activity is handling this directly in its own loop, this case is actually unreachable
+      // via the callback mechanism I set up in EpubReaderMenuActivity.cpp.
       // The logic is handled inside the menu loop itself.
       break;
     }
@@ -1001,8 +1001,8 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     } else {
       // LANDSCAPE CCW LABELS
 
-      // Top Left Corner (Back Button) -> Dark Mode
-      drawHelpBox(renderer, 20, 20, "2x: Dark", BoxAlign::LEFT, overlayFontId, overlayLineHeight);
+      // Bottom Right Corner -> Dark Mode
+      drawHelpBox(renderer, w - 10, h - 40, "2x: Dark", BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
 
       // Top Buttons (Top Edge - configuration)
       // Left (was Left) - shifted right by 20
