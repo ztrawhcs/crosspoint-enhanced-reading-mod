@@ -48,11 +48,13 @@ class EpubReaderMenuActivity final : public ActivityWithSubactivity {
   };
 
   // Fixed menu layout (order matters for up/down navigation).
-  const std::vector<MenuItem> menuItems = {
-      {MenuAction::SELECT_CHAPTER, "Go to Chapter"}, {MenuAction::ROTATE_SCREEN, "Reading Orientation"},
-      {MenuAction::BUTTON_MOD_SETTINGS, "Button Mods"}, {MenuAction::GO_TO_PERCENT, "Go to %"},
-      {MenuAction::GO_HOME, "Go Home"},              {MenuAction::SYNC, "Sync Progress"},
-      {MenuAction::DELETE_CACHE, "Delete Book Cache"}};
+  const std::vector<MenuItem> menuItems = {{MenuAction::SELECT_CHAPTER, "Go to Chapter"},
+                                           {MenuAction::ROTATE_SCREEN, "Reading Orientation"},
+                                           {MenuAction::BUTTON_MOD_SETTINGS, "Button Mods"},
+                                           {MenuAction::GO_TO_PERCENT, "Go to %"},
+                                           {MenuAction::GO_HOME, "Go Home"},
+                                           {MenuAction::SYNC, "Sync Progress"},
+                                           {MenuAction::DELETE_CACHE, "Delete Book Cache"}};
 
   int selectedIndex = 0;
   bool updateRequired = false;
