@@ -119,6 +119,10 @@ bool CrossPointSettings::saveToFile() const {
   serialization::writePod(outputFile, fadingFix);
   serialization::writePod(outputFile, embeddedStyle);
   serialization::writePod(outputFile, buttonModMode);
+  
+  // New BLE Setting
+  serialization::writeString(outputFile, std::string(blePageTurnerMac));
+  
   // New fields added at end for backward compatibility
   outputFile.close();
 
@@ -226,6 +230,16 @@ bool CrossPointSettings::loadFromFile() {
     if (++settingsRead >= fileSettingsCount) break;
     readAndValidate(inputFile, buttonModMode, BUTTON_MOD_MODE_COUNT);
     if (++settingsRead >= fileSettingsCount) break;
+
+    // Load BLE MAC Address
+    {
+      std::string macStr;
+      serialization::readString(inputFile, macStr);
+      strncpy(blePageTurnerMac, macStr.c_str(), sizeof(blePageTurnerMac) - 1);
+      blePageTurnerMac[sizeof(blePageTurnerMac) - 1] = '\0';
+    }
+    if (++settingsRead >= fileSettingsCount) break;
+
     // New fields added at end for backward compatibility
   } while (false);
 
@@ -348,4 +362,6 @@ int CrossPointSettings::getReaderFontId() const {
           return OPENDYSLEXIC_14_FONT_ID;
       }
   }
+}
+
 }
