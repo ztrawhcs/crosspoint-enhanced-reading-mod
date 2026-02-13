@@ -76,5 +76,3 @@ class EpubReaderMenuActivity final : public ActivityWithSubactivity {
   [[noreturn]] void displayTaskLoop();
   void renderScreen();
 };
-
-}
