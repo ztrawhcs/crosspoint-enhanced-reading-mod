@@ -197,5 +197,3 @@ class CrossPointSettings {
 
 // Helper macro to access settings
 #define SETTINGS CrossPointSettings::getInstance()
-
-}
