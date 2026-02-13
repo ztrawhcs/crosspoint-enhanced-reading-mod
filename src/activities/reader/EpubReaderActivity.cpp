@@ -455,42 +455,19 @@ void EpubReaderActivity::loop() {
     } else {
       if (SETTINGS.buttonModMode == CrossPointSettings::MOD_FULL && waitingForFormatInc &&
           (millis() - lastFormatIncRelease < doubleClickMs)) {
-        
         // DOUBLE CLICK: Toggle Anti-Aliasing (Full Mode Only)
         waitingForFormatInc = false;
         xSemaphoreTake(renderingMutex, portMAX_DELAY);
-        
         if (section) {
           cachedSpineIndex = currentSpineIndex;
           cachedChapterTotalPageCount = section->pageCount;
           nextPageNumber = section->currentPage;
         }
-        
         SETTINGS.textAntiAliasing = !SETTINGS.textAntiAliasing;
-        
-        // Ensure the font metric changes BEFORE the layout is rebuilt
-        EpdFontFamily::globalForceBold = SETTINGS.textAntiAliasing; 
-        
+        EpdFontFamily::globalForceBold = SETTINGS.textAntiAliasing;
         const char* aaMsg = SETTINGS.textAntiAliasing ? "Anti-Alias: ON" : "Anti-Alias: OFF";
         SETTINGS.saveToFile();
-        
-        // CRITICAL FIX: Because the bold font is wider, the line breaks are entirely different.
-        // We MUST clear the old cache, safely preserve our page number, and force a rebuild.
-        if (epub) {
-          uint16_t backupSpine = currentSpineIndex;
-          uint16_t backupPage = section ? section->currentPage : 0;
-          uint16_t backupPageCount = section ? section->pageCount : 0;
-
-          section.reset();
-          epub->clearCache();
-          epub->setupCacheDir();
-          
-          // Write progress.bin back immediately so we don't lose progress if something happens
-          saveProgress(backupSpine, backupPage, backupPageCount); 
-        } else {
-          section.reset();
-        }
-        
+        section.reset();
         xSemaphoreGive(renderingMutex);
         GUI.drawPopup(renderer, aaMsg);
         clearPopupTimer = millis() + 1000;
@@ -863,14 +840,16 @@ void EpubReaderActivity::renderScreen() {
 
     if (!section->loadSectionFile(SETTINGS.getReaderFontId(), SETTINGS.getReaderLineCompression(),
                                   SETTINGS.extraParagraphSpacing, SETTINGS.paragraphAlignment, viewportWidth,
-                                  viewportHeight, SETTINGS.hyphenationEnabled, SETTINGS.embeddedStyle)) {
+                                  viewportHeight, SETTINGS.hyphenationEnabled, SETTINGS.embeddedStyle,
+                                  SETTINGS.textAntiAliasing)) {
       Serial.printf("[%lu] [ERS] Cache not found, building...\n", millis());
 
       const auto popupFn = [this]() { GUI.drawPopup(renderer, "Indexing..."); };
 
       if (!section->createSectionFile(SETTINGS.getReaderFontId(), SETTINGS.getReaderLineCompression(),
                                       SETTINGS.extraParagraphSpacing, SETTINGS.paragraphAlignment, viewportWidth,
-                                      viewportHeight, SETTINGS.hyphenationEnabled, SETTINGS.embeddedStyle, popupFn)) {
+                                      viewportHeight, SETTINGS.hyphenationEnabled, SETTINGS.embeddedStyle,
+                                      SETTINGS.textAntiAliasing, popupFn)) {
         Serial.printf("[%lu] [ERS] Failed to persist page data to SD\n", millis());
         section.reset();
         return;
@@ -958,7 +937,6 @@ void EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageC
 void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                         const int orientedMarginRight, const int orientedMarginBottom,
                                         const int orientedMarginLeft) {
-
   page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
   renderStatusBar(orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
 
