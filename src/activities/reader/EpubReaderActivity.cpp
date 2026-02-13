@@ -128,6 +128,8 @@ void EpubReaderActivity::onEnter() {
   showHelpOverlay = false;
   // Reset Night Mode on entry
   isNightMode = false;
+  // Ensure the layout engine knows we want bold text right from the start
+  EpdFontFamily::globalForceBold = SETTINGS.textAntiAliasing;
 
   if (!epub) {
     return;
@@ -176,6 +178,8 @@ void EpubReaderActivity::onEnter() {
 void EpubReaderActivity::onExit() {
   ActivityWithSubactivity::onExit();
 
+  // Turn bold back off so library menus render normally
+  EpdFontFamily::globalForceBold = false;
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
 
   xSemaphoreTake(renderingMutex, portMAX_DELAY);
@@ -200,7 +204,6 @@ void EpubReaderActivity::loop() {
   }
 
   // --- HELP OVERLAY INTERCEPTION ---
-  // If overlay is showing, ANY button press dismisses it.
   if (showHelpOverlay) {
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
         mappedInput.wasReleased(MappedInputManager::Button::Back) ||
@@ -213,7 +216,6 @@ void EpubReaderActivity::loop() {
       updateRequired = true;
       return;
     }
-    // Block other logic while overlay is shown
     return;
   }
 
@@ -264,13 +266,11 @@ void EpubReaderActivity::loop() {
   // --- CONFIRM BUTTON (MENU / HELP) ---
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     if (SETTINGS.buttonModMode == CrossPointSettings::MOD_FULL && mappedInput.getHeldTime() > formattingToggleMs) {
-      // Long Press: Toggle Help Overlay (Only in Full Mode)
       showHelpOverlay = true;
       updateRequired = true;
       return;
     }
 
-    // Short Press: Open Menu
     xSemaphoreTake(renderingMutex, portMAX_DELAY);
     const int currentPage = section ? section->currentPage + 1 : 0;
     const int totalPages = section ? section->pageCount : 0;
@@ -294,15 +294,12 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  // In FULL mode, use delay to detect double click for Dark Mode
   if (SETTINGS.buttonModMode == CrossPointSettings::MOD_FULL) {
-    // These static vars are scoped here to satisfy cppcheck
     static unsigned long lastBackRelease = 0;
     static bool waitingForBack = false;
 
     if (mappedInput.wasReleased(MappedInputManager::Button::Back) && mappedInput.getHeldTime() < goHomeMs) {
       if (waitingForBack && (millis() - lastBackRelease < doubleClickMs)) {
-        // DOUBLE CLICK DETECTED: Toggle Dark Mode
         waitingForBack = false;
         isNightMode = !isNightMode;
         GUI.drawPopup(renderer, isNightMode ? "Dark Mode" : "Light Mode");
@@ -310,29 +307,22 @@ void EpubReaderActivity::loop() {
         updateRequired = true;
         return;
       } else {
-        // First click: Start timer
         waitingForBack = true;
         lastBackRelease = millis();
       }
     }
 
-    // Execute Delayed Single Click (Go Home)
     if (waitingForBack && (millis() - lastBackRelease > doubleClickMs)) {
       waitingForBack = false;
       onGoHome();
       return;
     }
   } else {
-    // In OFF or SIMPLE mode, standard instant behavior
     if (mappedInput.wasReleased(MappedInputManager::Button::Back) && mappedInput.getHeldTime() < goHomeMs) {
       onGoHome();
       return;
     }
   }
-
-  // =========================================================================================
-  // DYNAMIC BUTTON MAPPING LOGIC
-  // =========================================================================================
 
   MappedInputManager::Button btnFormatDec;
   MappedInputManager::Button btnFormatInc;
@@ -354,10 +344,8 @@ void EpubReaderActivity::loop() {
   // --- HANDLE FORMAT DEC ---
   bool executeFormatDecSingle = false;
 
-  // Only allow formatting logic if NOT in OFF mode
   if (SETTINGS.buttonModMode != CrossPointSettings::MOD_OFF && mappedInput.wasReleased(btnFormatDec)) {
     if (SETTINGS.buttonModMode == CrossPointSettings::MOD_FULL && mappedInput.getHeldTime() > formattingToggleMs) {
-      // Long Press: Cycle Spacing (Full Mode Only)
       waitingForFormatDec = false;
       xSemaphoreTake(renderingMutex, portMAX_DELAY);
       if (section) {
@@ -385,7 +373,6 @@ void EpubReaderActivity::loop() {
     } else {
       if (SETTINGS.buttonModMode == CrossPointSettings::MOD_FULL && waitingForFormatDec &&
           (millis() - lastFormatDecRelease < doubleClickMs)) {
-        // DOUBLE CLICK: Toggle Alignment (Full Mode Only)
         waitingForFormatDec = false;
         xSemaphoreTake(renderingMutex, portMAX_DELAY);
         if (section) {
@@ -408,10 +395,8 @@ void EpubReaderActivity::loop() {
         return;
       } else {
         if (SETTINGS.buttonModMode == CrossPointSettings::MOD_SIMPLE) {
-          // Simple Mode: Execute single click immediately
           executeFormatDecSingle = true;
         } else {
-          // Full Mode: Wait for potential double click
           waitingForFormatDec = true;
           lastFormatDecRelease = millis();
         }
@@ -457,7 +442,6 @@ void EpubReaderActivity::loop() {
 
   if (SETTINGS.buttonModMode != CrossPointSettings::MOD_OFF && mappedInput.wasReleased(btnFormatInc)) {
     if (SETTINGS.buttonModMode == CrossPointSettings::MOD_FULL && mappedInput.getHeldTime() > formattingToggleMs) {
-      // Long Press: Toggle Orientation (Full Mode Only)
       waitingForFormatInc = false;
       uint8_t newOrientation = (SETTINGS.orientation == CrossPointSettings::ORIENTATION::PORTRAIT)
                                    ? CrossPointSettings::ORIENTATION::LANDSCAPE_CCW
@@ -471,9 +455,11 @@ void EpubReaderActivity::loop() {
     } else {
       if (SETTINGS.buttonModMode == CrossPointSettings::MOD_FULL && waitingForFormatInc &&
           (millis() - lastFormatIncRelease < doubleClickMs)) {
+        
         // DOUBLE CLICK: Toggle Anti-Aliasing (Full Mode Only)
         waitingForFormatInc = false;
         xSemaphoreTake(renderingMutex, portMAX_DELAY);
+        
         if (section) {
           cachedSpineIndex = currentSpineIndex;
           cachedChapterTotalPageCount = section->pageCount;
@@ -481,17 +467,30 @@ void EpubReaderActivity::loop() {
         }
         
         SETTINGS.textAntiAliasing = !SETTINGS.textAntiAliasing;
+        
+        // Ensure the font metric changes BEFORE the layout is rebuilt
+        EpdFontFamily::globalForceBold = SETTINGS.textAntiAliasing; 
+        
         const char* aaMsg = SETTINGS.textAntiAliasing ? "Anti-Alias: ON" : "Anti-Alias: OFF";
         SETTINGS.saveToFile();
         
-        // CRITICAL FIX: We must clear the layout cache when toggling Anti-Aliasing!
-        // If we don't, it will load the narrow Regular font spacing and crash into the wide Bold text.
+        // CRITICAL FIX: Because the bold font is wider, the line breaks are entirely different.
+        // We MUST clear the old cache, safely preserve our page number, and force a rebuild.
         if (epub) {
+          uint16_t backupSpine = currentSpineIndex;
+          uint16_t backupPage = section ? section->currentPage : 0;
+          uint16_t backupPageCount = section ? section->pageCount : 0;
+
+          section.reset();
           epub->clearCache();
           epub->setupCacheDir();
+          
+          // Write progress.bin back immediately so we don't lose progress if something happens
+          saveProgress(backupSpine, backupPage, backupPageCount); 
+        } else {
+          section.reset();
         }
-
-        section.reset();
+        
         xSemaphoreGive(renderingMutex);
         GUI.drawPopup(renderer, aaMsg);
         clearPopupTimer = millis() + 1000;
@@ -552,7 +551,6 @@ void EpubReaderActivity::loop() {
   bool nextTriggered = usePressForPageTurn ? (mappedInput.wasPressed(btnNavNext) || powerPageTurn)
                                            : (mappedInput.wasReleased(btnNavNext) || powerPageTurn);
 
-  // FALLBACK: In OFF mode, the formatting buttons revert to Page Turns
   if (SETTINGS.buttonModMode == CrossPointSettings::MOD_OFF) {
     if (usePressForPageTurn) {
       if (mappedInput.wasPressed(btnFormatDec)) prevTriggered = true;
@@ -858,11 +856,6 @@ void EpubReaderActivity::renderScreen() {
   if (!section) {
     const auto filepath = epub->getSpineItem(currentSpineIndex).href;
     Serial.printf("[%lu] [ERS] Loading file: %s, index: %d\n", millis(), filepath.c_str(), currentSpineIndex);
-    
-    // CRITICAL LAYOUT FIX: Turn ON forced bold BEFORE the engine calculates line breaks!
-    // This tells the EPUB engine to use the wide bold metrics to place the letters.
-    EpdFontFamily::globalForceBold = (SETTINGS.textAntiAliasing && !isNightMode);
-
     section = std::unique_ptr<Section>(new Section(epub, currentSpineIndex, renderer));
 
     const uint16_t viewportWidth = renderer.getScreenWidth() - orientedMarginLeft - orientedMarginRight;
@@ -909,9 +902,6 @@ void EpubReaderActivity::renderScreen() {
       section->currentPage = newPage;
       pendingPercentJump = false;
     }
-
-    // Turn OFF forced bold as soon as layout is done so menus don't get messed up
-    EpdFontFamily::globalForceBold = false;
   }
 
   renderer.clearScreen();
@@ -968,13 +958,8 @@ void EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageC
 void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                         const int orientedMarginRight, const int orientedMarginBottom,
                                         const int orientedMarginLeft) {
-  
-  // Turn on forced bold ONLY for the main text body
-  EpdFontFamily::globalForceBold = (SETTINGS.textAntiAliasing && !showHelpOverlay && !isNightMode);
+
   page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
-  
-  // Turn OFF immediately so the status bar renders properly
-  EpdFontFamily::globalForceBold = false;
   renderStatusBar(orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
 
   if (isNightMode) {
@@ -987,7 +972,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     const int h = renderer.getScreenHeight();
 
     int32_t overlayFontId = SMALL_FONT_ID;
-    int overlayLineHeight = 18;  
+    int overlayLineHeight = 18;
 
     int dismissY = (SETTINGS.orientation == CrossPointSettings::ORIENTATION::PORTRAIT) ? 500 : 300;
     int dismissX = (SETTINGS.orientation == CrossPointSettings::ORIENTATION::PORTRAIT) ? w / 2 : w / 2 + 25;
@@ -1022,9 +1007,6 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   renderer.storeBwBuffer();
 
   if (SETTINGS.textAntiAliasing && !showHelpOverlay && !isNightMode) {
-    // Turn bold BACK ON for the grayscale passes
-    EpdFontFamily::globalForceBold = true;
-
     renderer.clearScreen(0x00);
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
     page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
@@ -1037,9 +1019,6 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 
     renderer.displayGrayBuffer();
     renderer.setRenderMode(GfxRenderer::BW);
-
-    // Turn OFF one final time
-    EpdFontFamily::globalForceBold = false;
   }
 
   renderer.restoreBwBuffer();
