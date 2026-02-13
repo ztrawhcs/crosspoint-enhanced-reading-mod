@@ -119,10 +119,10 @@ bool CrossPointSettings::saveToFile() const {
   serialization::writePod(outputFile, fadingFix);
   serialization::writePod(outputFile, embeddedStyle);
   serialization::writePod(outputFile, buttonModMode);
-  
+
   // New BLE Setting
   serialization::writeString(outputFile, std::string(blePageTurnerMac));
-  
+
   // New fields added at end for backward compatibility
   outputFile.close();
 
