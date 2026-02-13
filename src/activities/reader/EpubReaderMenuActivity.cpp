@@ -161,5 +161,3 @@ void EpubReaderMenuActivity::renderScreen() {
 
   renderer.displayBuffer();
 }
-
-}
