@@ -4,6 +4,8 @@
 
 #include <algorithm>
 
+#include "EpdFontFamily.h"
+
 void EpdFont::getTextBounds(const char* string, const int startX, const int startY, int* minX, int* minY, int* maxX,
                             int* maxY) const {
   *minX = startX;
@@ -34,7 +36,14 @@ void EpdFont::getTextBounds(const char* string, const int startX, const int star
     *maxX = std::max(*maxX, cursorX + glyph->left + glyph->width);
     *minY = std::min(*minY, cursorY + glyph->top - glyph->height);
     *maxY = std::max(*maxY, cursorY + glyph->top);
+
     cursorX += glyph->advanceX;
+
+    // CUSTOM TRACKING: If we are in forced bold mode, reduce letter spacing by 1px
+    // We explicitly exclude normal spaces (' ') and non-breaking spaces (0x00A0)
+    if (EpdFontFamily::globalForceBold && cp != ' ' && cp != 0x00A0) {
+      cursorX -= 1;
+    }
   }
 }
 

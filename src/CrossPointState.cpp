@@ -1,7 +1,7 @@
 #include "CrossPointState.h"
 
 #include <HalStorage.h>
-#include <Logging.h>
+#include <HardwareSerial.h>
 #include <Serialization.h>
 
 namespace {
@@ -35,7 +35,7 @@ bool CrossPointState::loadFromFile() {
   uint8_t version;
   serialization::readPod(inputFile, version);
   if (version > STATE_FILE_VERSION) {
-    LOG_ERR("CPS", "Deserialization failed: Unknown version %u", version);
+    Serial.printf("[%lu] [CPS] Deserialization failed: Unknown version %u\n", millis(), version);
     inputFile.close();
     return false;
   }

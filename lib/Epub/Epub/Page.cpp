@@ -1,6 +1,6 @@
 #include "Page.h"
 
-#include <Logging.h>
+#include <HardwareSerial.h>
 #include <Serialization.h>
 
 void PageLine::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) {
@@ -60,7 +60,7 @@ std::unique_ptr<Page> Page::deserialize(FsFile& file) {
       auto pl = PageLine::deserialize(file);
       page->elements.push_back(std::move(pl));
     } else {
-      LOG_ERR("PGE", "Deserialization failed: Unknown tag %u", tag);
+      Serial.printf("[%lu] [PGE] Deserialization failed: Unknown tag %u\n", millis(), tag);
       return nullptr;
     }
   }

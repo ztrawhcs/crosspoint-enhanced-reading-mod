@@ -37,7 +37,7 @@ void CrossPointWebServerActivity::taskTrampoline(void* param) {
 void CrossPointWebServerActivity::onEnter() {
   ActivityWithSubactivity::onEnter();
 
-  LOG_DBG("WEBACT] [MEM", "Free heap at onEnter: %d bytes", ESP.getFreeHeap());
+  Serial.printf("[%lu] [WEBACT] [MEM] Free heap at onEnter: %d bytes\n", millis(), ESP.getFreeHeap());
 
   renderingMutex = xSemaphoreCreateMutex();
 
@@ -58,7 +58,7 @@ void CrossPointWebServerActivity::onEnter() {
   );
 
   // Launch network mode selection subactivity
-  LOG_DBG("WEBACT", "Launching NetworkModeSelectionActivity...");
+  Serial.printf("[%lu] [WEBACT] Launching NetworkModeSelectionActivity...\n", millis());
   enterNewActivity(new NetworkModeSelectionActivity(
       renderer, mappedInput, [this](const NetworkMode mode) { onNetworkModeSelected(mode); },
       [this]() { onGoBack(); }  // Cancel goes back to home
@@ -68,7 +68,7 @@ void CrossPointWebServerActivity::onEnter() {
 void CrossPointWebServerActivity::onExit() {
   ActivityWithSubactivity::onExit();
 
-  LOG_DBG("WEBACT] [MEM", "Free heap at onExit start: %d bytes", ESP.getFreeHeap());
+  Serial.printf("[%lu] [WEBACT] [MEM] Free heap at onExit start: %d bytes\n", millis(), ESP.getFreeHeap());
 
   state = WebServerActivityState::SHUTTING_DOWN;
 
@@ -80,7 +80,7 @@ void CrossPointWebServerActivity::onExit() {
 
   // Stop DNS server if running (AP mode)
   if (dnsServer) {
-    LOG_DBG("WEBACT", "Stopping DNS server...");
+    Serial.printf("[%lu] [WEBACT] Stopping DNS server...\n", millis());
     dnsServer->stop();
     delete dnsServer;
     dnsServer = nullptr;
@@ -91,39 +91,39 @@ void CrossPointWebServerActivity::onExit() {
 
   // Disconnect WiFi gracefully
   if (isApMode) {
-    LOG_DBG("WEBACT", "Stopping WiFi AP...");
+    Serial.printf("[%lu] [WEBACT] Stopping WiFi AP...\n", millis());
     WiFi.softAPdisconnect(true);
   } else {
-    LOG_DBG("WEBACT", "Disconnecting WiFi (graceful)...");
+    Serial.printf("[%lu] [WEBACT] Disconnecting WiFi (graceful)...\n", millis());
     WiFi.disconnect(false);  // false = don't erase credentials, send disconnect frame
   }
   delay(30);  // Allow disconnect frame to be sent
 
-  LOG_DBG("WEBACT", "Setting WiFi mode OFF...");
+  Serial.printf("[%lu] [WEBACT] Setting WiFi mode OFF...\n", millis());
   WiFi.mode(WIFI_OFF);
   delay(30);  // Allow WiFi hardware to power down
 
-  LOG_DBG("WEBACT] [MEM", "Free heap after WiFi disconnect: %d bytes", ESP.getFreeHeap());
+  Serial.printf("[%lu] [WEBACT] [MEM] Free heap after WiFi disconnect: %d bytes\n", millis(), ESP.getFreeHeap());
 
   // Acquire mutex before deleting task
-  LOG_DBG("WEBACT", "Acquiring rendering mutex before task deletion...");
+  Serial.printf("[%lu] [WEBACT] Acquiring rendering mutex before task deletion...\n", millis());
   xSemaphoreTake(renderingMutex, portMAX_DELAY);
 
   // Delete the display task
-  LOG_DBG("WEBACT", "Deleting display task...");
+  Serial.printf("[%lu] [WEBACT] Deleting display task...\n", millis());
   if (displayTaskHandle) {
     vTaskDelete(displayTaskHandle);
     displayTaskHandle = nullptr;
-    LOG_DBG("WEBACT", "Display task deleted");
+    Serial.printf("[%lu] [WEBACT] Display task deleted\n", millis());
   }
 
   // Delete the mutex
-  LOG_DBG("WEBACT", "Deleting mutex...");
+  Serial.printf("[%lu] [WEBACT] Deleting mutex...\n", millis());
   vSemaphoreDelete(renderingMutex);
   renderingMutex = nullptr;
-  LOG_DBG("WEBACT", "Mutex deleted");
+  Serial.printf("[%lu] [WEBACT] Mutex deleted\n", millis());
 
-  LOG_DBG("WEBACT] [MEM", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
+  Serial.printf("[%lu] [WEBACT] [MEM] Free heap at onExit end: %d bytes\n", millis(), ESP.getFreeHeap());
 }
 
 void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) {
@@ -133,7 +133,7 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
   } else if (mode == NetworkMode::CREATE_HOTSPOT) {
     modeName = "Create Hotspot";
   }
-  LOG_DBG("WEBACT", "Network mode selected: %s", modeName);
+  Serial.printf("[%lu] [WEBACT] Network mode selected: %s\n", millis(), modeName);
 
   networkMode = mode;
   isApMode = (mode == NetworkMode::CREATE_HOTSPOT);
@@ -155,11 +155,11 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
 
   if (mode == NetworkMode::JOIN_NETWORK) {
     // STA mode - launch WiFi selection
-    LOG_DBG("WEBACT", "Turning on WiFi (STA mode)...");
+    Serial.printf("[%lu] [WEBACT] Turning on WiFi (STA mode)...\n", millis());
     WiFi.mode(WIFI_STA);
 
     state = WebServerActivityState::WIFI_SELECTION;
-    LOG_DBG("WEBACT", "Launching WifiSelectionActivity...");
+    Serial.printf("[%lu] [WEBACT] Launching WifiSelectionActivity...\n", millis());
     enterNewActivity(new WifiSelectionActivity(renderer, mappedInput,
                                                [this](const bool connected) { onWifiSelectionComplete(connected); }));
   } else {
@@ -171,7 +171,7 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
 }
 
 void CrossPointWebServerActivity::onWifiSelectionComplete(const bool connected) {
-  LOG_DBG("WEBACT", "WifiSelectionActivity completed, connected=%d", connected);
+  Serial.printf("[%lu] [WEBACT] WifiSelectionActivity completed, connected=%d\n", millis(), connected);
 
   if (connected) {
     // Get connection info before exiting subactivity
@@ -183,7 +183,7 @@ void CrossPointWebServerActivity::onWifiSelectionComplete(const bool connected) 
 
     // Start mDNS for hostname resolution
     if (MDNS.begin(AP_HOSTNAME)) {
-      LOG_DBG("WEBACT", "mDNS started: http://%s.local/", AP_HOSTNAME);
+      Serial.printf("[%lu] [WEBACT] mDNS started: http://%s.local/\n", millis(), AP_HOSTNAME);
     }
 
     // Start the web server
@@ -199,8 +199,8 @@ void CrossPointWebServerActivity::onWifiSelectionComplete(const bool connected) 
 }
 
 void CrossPointWebServerActivity::startAccessPoint() {
-  LOG_DBG("WEBACT", "Starting Access Point mode...");
-  LOG_DBG("WEBACT] [MEM", "Free heap before AP start: %d bytes", ESP.getFreeHeap());
+  Serial.printf("[%lu] [WEBACT] Starting Access Point mode...\n", millis());
+  Serial.printf("[%lu] [WEBACT] [MEM] Free heap before AP start: %d bytes\n", millis(), ESP.getFreeHeap());
 
   // Configure and start the AP
   WiFi.mode(WIFI_AP);
@@ -216,7 +216,7 @@ void CrossPointWebServerActivity::startAccessPoint() {
   }
 
   if (!apStarted) {
-    LOG_ERR("WEBACT", "ERROR: Failed to start Access Point!");
+    Serial.printf("[%lu] [WEBACT] ERROR: Failed to start Access Point!\n", millis());
     onGoBack();
     return;
   }
@@ -230,15 +230,15 @@ void CrossPointWebServerActivity::startAccessPoint() {
   connectedIP = ipStr;
   connectedSSID = AP_SSID;
 
-  LOG_DBG("WEBACT", "Access Point started!");
-  LOG_DBG("WEBACT", "SSID: %s", AP_SSID);
-  LOG_DBG("WEBACT", "IP: %s", connectedIP.c_str());
+  Serial.printf("[%lu] [WEBACT] Access Point started!\n", millis());
+  Serial.printf("[%lu] [WEBACT] SSID: %s\n", millis(), AP_SSID);
+  Serial.printf("[%lu] [WEBACT] IP: %s\n", millis(), connectedIP.c_str());
 
   // Start mDNS for hostname resolution
   if (MDNS.begin(AP_HOSTNAME)) {
-    LOG_DBG("WEBACT", "mDNS started: http://%s.local/", AP_HOSTNAME);
+    Serial.printf("[%lu] [WEBACT] mDNS started: http://%s.local/\n", millis(), AP_HOSTNAME);
   } else {
-    LOG_DBG("WEBACT", "WARNING: mDNS failed to start");
+    Serial.printf("[%lu] [WEBACT] WARNING: mDNS failed to start\n", millis());
   }
 
   // Start DNS server for captive portal behavior
@@ -246,16 +246,16 @@ void CrossPointWebServerActivity::startAccessPoint() {
   dnsServer = new DNSServer();
   dnsServer->setErrorReplyCode(DNSReplyCode::NoError);
   dnsServer->start(DNS_PORT, "*", apIP);
-  LOG_DBG("WEBACT", "DNS server started for captive portal");
+  Serial.printf("[%lu] [WEBACT] DNS server started for captive portal\n", millis());
 
-  LOG_DBG("WEBACT] [MEM", "Free heap after AP start: %d bytes", ESP.getFreeHeap());
+  Serial.printf("[%lu] [WEBACT] [MEM] Free heap after AP start: %d bytes\n", millis(), ESP.getFreeHeap());
 
   // Start the web server
   startWebServer();
 }
 
 void CrossPointWebServerActivity::startWebServer() {
-  LOG_DBG("WEBACT", "Starting web server...");
+  Serial.printf("[%lu] [WEBACT] Starting web server...\n", millis());
 
   // Create the web server instance
   webServer.reset(new CrossPointWebServer());
@@ -263,16 +263,16 @@ void CrossPointWebServerActivity::startWebServer() {
 
   if (webServer->isRunning()) {
     state = WebServerActivityState::SERVER_RUNNING;
-    LOG_DBG("WEBACT", "Web server started successfully");
+    Serial.printf("[%lu] [WEBACT] Web server started successfully\n", millis());
 
     // Force an immediate render since we're transitioning from a subactivity
     // that had its own rendering task. We need to make sure our display is shown.
     xSemaphoreTake(renderingMutex, portMAX_DELAY);
     render();
     xSemaphoreGive(renderingMutex);
-    LOG_DBG("WEBACT", "Rendered File Transfer screen");
+    Serial.printf("[%lu] [WEBACT] Rendered File Transfer screen\n", millis());
   } else {
-    LOG_ERR("WEBACT", "ERROR: Failed to start web server!");
+    Serial.printf("[%lu] [WEBACT] ERROR: Failed to start web server!\n", millis());
     webServer.reset();
     // Go back on error
     onGoBack();
@@ -281,9 +281,9 @@ void CrossPointWebServerActivity::startWebServer() {
 
 void CrossPointWebServerActivity::stopWebServer() {
   if (webServer && webServer->isRunning()) {
-    LOG_DBG("WEBACT", "Stopping web server...");
+    Serial.printf("[%lu] [WEBACT] Stopping web server...\n", millis());
     webServer->stop();
-    LOG_DBG("WEBACT", "Web server stopped");
+    Serial.printf("[%lu] [WEBACT] Web server stopped\n", millis());
   }
   webServer.reset();
 }
@@ -309,7 +309,7 @@ void CrossPointWebServerActivity::loop() {
         lastWifiCheck = millis();
         const wl_status_t wifiStatus = WiFi.status();
         if (wifiStatus != WL_CONNECTED) {
-          LOG_DBG("WEBACT", "WiFi disconnected! Status: %d", wifiStatus);
+          Serial.printf("[%lu] [WEBACT] WiFi disconnected! Status: %d\n", millis(), wifiStatus);
           // Show error and exit gracefully
           state = WebServerActivityState::SHUTTING_DOWN;
           updateRequired = true;
@@ -318,7 +318,7 @@ void CrossPointWebServerActivity::loop() {
         // Log weak signal warnings
         const int rssi = WiFi.RSSI();
         if (rssi < -75) {
-          LOG_DBG("WEBACT", "Warning: Weak WiFi signal: %d dBm", rssi);
+          Serial.printf("[%lu] [WEBACT] Warning: Weak WiFi signal: %d dBm\n", millis(), rssi);
         }
       }
     }
@@ -329,7 +329,8 @@ void CrossPointWebServerActivity::loop() {
 
       // Log if there's a significant gap between handleClient calls (>100ms)
       if (lastHandleClientTime > 0 && timeSinceLastHandleClient > 100) {
-        LOG_DBG("WEBACT", "WARNING: %lu ms gap since last handleClient", timeSinceLastHandleClient);
+        Serial.printf("[%lu] [WEBACT] WARNING: %lu ms gap since last handleClient\n", millis(),
+                      timeSinceLastHandleClient);
       }
 
       // Reset watchdog BEFORE processing - HTTP header parsing can be slow
@@ -347,9 +348,6 @@ void CrossPointWebServerActivity::loop() {
         // Yield and check for exit button every 64 iterations
         if ((i & 0x3F) == 0x3F) {
           yield();
-          // Force trigger an update of which buttons are being pressed so be have accurate state
-          // for back button checking
-          mappedInput.update();
           // Check for exit button inside loop for responsiveness
           if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
             onGoBack();
@@ -400,7 +398,7 @@ void drawQRCode(const GfxRenderer& renderer, const int x, const int y, const std
   // The structure to manage the QR code
   QRCode qrcode;
   uint8_t qrcodeBytes[qrcode_getBufferSize(4)];
-  LOG_DBG("WEBACT", "QR Code (%lu): %s", data.length(), data.c_str());
+  Serial.printf("[%lu] [WEBACT] QR Code (%lu): %s\n", millis(), data.length(), data.c_str());
 
   qrcode_initText(&qrcode, qrcodeBytes, 4, ECC_LOW, data.c_str());
   const uint8_t px = 6;  // pixels per module

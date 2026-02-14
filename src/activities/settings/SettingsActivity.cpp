@@ -1,7 +1,7 @@
 #include "SettingsActivity.h"
 
 #include <GfxRenderer.h>
-#include <Logging.h>
+#include <HardwareSerial.h>
 
 #include "ButtonRemapActivity.h"
 #include "CalibreSettingsActivity.h"
@@ -11,7 +11,6 @@
 #include "MappedInputManager.h"
 #include "OtaUpdateActivity.h"
 #include "SettingsList.h"
-#include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -47,13 +46,11 @@ void SettingsActivity::onEnter() {
   }
 
   // Append device-only ACTION items
-  controlsSettings.insert(controlsSettings.begin(),
-                          SettingInfo::Action("Remap Front Buttons", SettingAction::RemapFrontButtons));
-  systemSettings.push_back(SettingInfo::Action("Network", SettingAction::Network));
-  systemSettings.push_back(SettingInfo::Action("KOReader Sync", SettingAction::KOReaderSync));
-  systemSettings.push_back(SettingInfo::Action("OPDS Browser", SettingAction::OPDSBrowser));
-  systemSettings.push_back(SettingInfo::Action("Clear Cache", SettingAction::ClearCache));
-  systemSettings.push_back(SettingInfo::Action("Check for updates", SettingAction::CheckForUpdates));
+  controlsSettings.insert(controlsSettings.begin(), SettingInfo::Action("Remap Front Buttons"));
+  systemSettings.push_back(SettingInfo::Action("KOReader Sync"));
+  systemSettings.push_back(SettingInfo::Action("OPDS Browser"));
+  systemSettings.push_back(SettingInfo::Action("Clear Cache"));
+  systemSettings.push_back(SettingInfo::Action("Check for updates"));
 
   // Reset selection to first category
   selectedCategoryIndex = 0;
@@ -181,45 +178,46 @@ void SettingsActivity::toggleCurrentSetting() {
       SETTINGS.*(setting.valuePtr) = currentValue + setting.valueRange.step;
     }
   } else if (setting.type == SettingType::ACTION) {
-    auto enterSubActivity = [this](Activity* activity) {
+    if (strcmp(setting.name, "Remap Front Buttons") == 0) {
       xSemaphoreTake(renderingMutex, portMAX_DELAY);
       exitActivity();
-      enterNewActivity(activity);
+      enterNewActivity(new ButtonRemapActivity(renderer, mappedInput, [this] {
+        exitActivity();
+        updateRequired = true;
+      }));
       xSemaphoreGive(renderingMutex);
-    };
-
-    auto onComplete = [this] {
+    } else if (strcmp(setting.name, "KOReader Sync") == 0) {
+      xSemaphoreTake(renderingMutex, portMAX_DELAY);
       exitActivity();
-      updateRequired = true;
-    };
-
-    auto onCompleteBool = [this](bool) {
+      enterNewActivity(new KOReaderSettingsActivity(renderer, mappedInput, [this] {
+        exitActivity();
+        updateRequired = true;
+      }));
+      xSemaphoreGive(renderingMutex);
+    } else if (strcmp(setting.name, "OPDS Browser") == 0) {
+      xSemaphoreTake(renderingMutex, portMAX_DELAY);
       exitActivity();
-      updateRequired = true;
-    };
-
-    switch (setting.action) {
-      case SettingAction::RemapFrontButtons:
-        enterSubActivity(new ButtonRemapActivity(renderer, mappedInput, onComplete));
-        break;
-      case SettingAction::KOReaderSync:
-        enterSubActivity(new KOReaderSettingsActivity(renderer, mappedInput, onComplete));
-        break;
-      case SettingAction::OPDSBrowser:
-        enterSubActivity(new CalibreSettingsActivity(renderer, mappedInput, onComplete));
-        break;
-      case SettingAction::Network:
-        enterSubActivity(new WifiSelectionActivity(renderer, mappedInput, onCompleteBool, false));
-        break;
-      case SettingAction::ClearCache:
-        enterSubActivity(new ClearCacheActivity(renderer, mappedInput, onComplete));
-        break;
-      case SettingAction::CheckForUpdates:
-        enterSubActivity(new OtaUpdateActivity(renderer, mappedInput, onComplete));
-        break;
-      case SettingAction::None:
-        // Do nothing
-        break;
+      enterNewActivity(new CalibreSettingsActivity(renderer, mappedInput, [this] {
+        exitActivity();
+        updateRequired = true;
+      }));
+      xSemaphoreGive(renderingMutex);
+    } else if (strcmp(setting.name, "Clear Cache") == 0) {
+      xSemaphoreTake(renderingMutex, portMAX_DELAY);
+      exitActivity();
+      enterNewActivity(new ClearCacheActivity(renderer, mappedInput, [this] {
+        exitActivity();
+        updateRequired = true;
+      }));
+      xSemaphoreGive(renderingMutex);
+    } else if (strcmp(setting.name, "Check for updates") == 0) {
+      xSemaphoreTake(renderingMutex, portMAX_DELAY);
+      exitActivity();
+      enterNewActivity(new OtaUpdateActivity(renderer, mappedInput, [this] {
+        exitActivity();
+        updateRequired = true;
+      }));
+      xSemaphoreGive(renderingMutex);
     }
   } else {
     return;

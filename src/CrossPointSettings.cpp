@@ -1,7 +1,7 @@
 #include "CrossPointSettings.h"
 
 #include <HalStorage.h>
-#include <Logging.h>
+#include <HardwareSerial.h>
 #include <Serialization.h>
 
 #include <cstring>
@@ -21,20 +21,15 @@ void readAndValidate(FsFile& file, uint8_t& member, const uint8_t maxValue) {
 
 namespace {
 constexpr uint8_t SETTINGS_FILE_VERSION = 1;
-// Increment this when adding new persisted settings fields
-constexpr uint8_t SETTINGS_COUNT = 30;
+constexpr uint8_t SETTINGS_COUNT = 34;
 constexpr char SETTINGS_FILE[] = "/.crosspoint/settings.bin";
 
-// Validate front button mapping to ensure each hardware button is unique.
-// If duplicates are detected, reset to the default physical order to prevent invalid mappings.
 void validateFrontButtonMapping(CrossPointSettings& settings) {
-  // Snapshot the logical->hardware mapping so we can compare for duplicates.
   const uint8_t mapping[] = {settings.frontButtonBack, settings.frontButtonConfirm, settings.frontButtonLeft,
                              settings.frontButtonRight};
   for (size_t i = 0; i < 4; i++) {
     for (size_t j = i + 1; j < 4; j++) {
       if (mapping[i] == mapping[j]) {
-        // Duplicate detected: restore the default physical order (Back, Confirm, Left, Right).
         settings.frontButtonBack = CrossPointSettings::FRONT_HW_BACK;
         settings.frontButtonConfirm = CrossPointSettings::FRONT_HW_CONFIRM;
         settings.frontButtonLeft = CrossPointSettings::FRONT_HW_LEFT;
@@ -45,7 +40,6 @@ void validateFrontButtonMapping(CrossPointSettings& settings) {
   }
 }
 
-// Convert legacy front button layout into explicit logical->hardware mapping.
 void applyLegacyFrontButtonLayout(CrossPointSettings& settings) {
   switch (static_cast<CrossPointSettings::FRONT_BUTTON_LAYOUT>(settings.frontButtonLayout)) {
     case CrossPointSettings::LEFT_RIGHT_BACK_CONFIRM:
@@ -78,7 +72,6 @@ void applyLegacyFrontButtonLayout(CrossPointSettings& settings) {
 }  // namespace
 
 bool CrossPointSettings::saveToFile() const {
-  // Make sure the directory exists
   Storage.mkdir("/.crosspoint");
 
   FsFile outputFile;
@@ -118,10 +111,14 @@ bool CrossPointSettings::saveToFile() const {
   serialization::writePod(outputFile, frontButtonRight);
   serialization::writePod(outputFile, fadingFix);
   serialization::writePod(outputFile, embeddedStyle);
-  // New fields added at end for backward compatibility
+  serialization::writePod(outputFile, buttonModMode);
+  serialization::writeString(outputFile, std::string(blePageTurnerMac));
+  serialization::writePod(outputFile, forceBoldText);
+  serialization::writePod(outputFile, swapPortraitControls);
+
   outputFile.close();
 
-  LOG_DBG("CPS", "Settings saved to file");
+  Serial.printf("[%lu] [CPS] Settings saved to file\n", millis());
   return true;
 }
 
@@ -134,7 +131,7 @@ bool CrossPointSettings::loadFromFile() {
   uint8_t version;
   serialization::readPod(inputFile, version);
   if (version != SETTINGS_FILE_VERSION) {
-    LOG_ERR("CPS", "Deserialization failed: Unknown version %u", version);
+    Serial.printf("[%lu] [CPS] Deserialization failed: Unknown version %u\n", millis(), version);
     inputFile.close();
     return false;
   }
@@ -142,9 +139,7 @@ bool CrossPointSettings::loadFromFile() {
   uint8_t fileSettingsCount = 0;
   serialization::readPod(inputFile, fileSettingsCount);
 
-  // load settings that exist (support older files with fewer fields)
   uint8_t settingsRead = 0;
-  // Track whether remap fields were present in the settings file.
   bool frontButtonMappingRead = false;
   do {
     readAndValidate(inputFile, sleepScreen, SLEEP_SCREEN_MODE_COUNT);
@@ -223,7 +218,23 @@ bool CrossPointSettings::loadFromFile() {
     if (++settingsRead >= fileSettingsCount) break;
     serialization::readPod(inputFile, embeddedStyle);
     if (++settingsRead >= fileSettingsCount) break;
-    // New fields added at end for backward compatibility
+    readAndValidate(inputFile, buttonModMode, BUTTON_MOD_MODE_COUNT);
+    if (++settingsRead >= fileSettingsCount) break;
+
+    {
+      std::string macStr;
+      serialization::readString(inputFile, macStr);
+      strncpy(blePageTurnerMac, macStr.c_str(), sizeof(blePageTurnerMac) - 1);
+      blePageTurnerMac[sizeof(blePageTurnerMac) - 1] = '\0';
+    }
+    if (++settingsRead >= fileSettingsCount) break;
+
+    serialization::readPod(inputFile, forceBoldText);
+    if (++settingsRead >= fileSettingsCount) break;
+
+    serialization::readPod(inputFile, swapPortraitControls);
+    if (++settingsRead >= fileSettingsCount) break;
+
   } while (false);
 
   if (frontButtonMappingRead) {
@@ -233,7 +244,7 @@ bool CrossPointSettings::loadFromFile() {
   }
 
   inputFile.close();
-  LOG_DBG("CPS", "Settings loaded from file");
+  Serial.printf("[%lu] [CPS] Settings loaded from file\n", millis());
   return true;
 }
 

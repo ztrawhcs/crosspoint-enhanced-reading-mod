@@ -1,7 +1,6 @@
 #include "OtaUpdater.h"
 
 #include <ArduinoJson.h>
-#include <Logging.h>
 
 #include "esp_http_client.h"
 #include "esp_https_ota.h"
@@ -40,7 +39,7 @@ esp_err_t event_handler(esp_http_client_event_t* event) {
       local_buf = static_cast<char*>(calloc(content_len + 1, sizeof(char)));
       output_len = 0;
       if (local_buf == NULL) {
-        LOG_ERR("OTA", "HTTP Client Out of Memory Failed, Allocation %d", content_len);
+        Serial.printf("[%lu] [OTA] HTTP Client Out of Memory Failed, Allocation %d\n", millis(), content_len);
         return ESP_ERR_NO_MEM;
       }
     }
@@ -53,7 +52,7 @@ esp_err_t event_handler(esp_http_client_event_t* event) {
     /* Code might be hits here, It happened once (for version checking) but I need more logs to handle that */
     int chunked_len;
     esp_http_client_get_chunk_length(event->client, &chunked_len);
-    LOG_DBG("OTA", "esp_http_client_is_chunked_response failed, chunked_len: %d", chunked_len);
+    Serial.printf("[%lu] [OTA] esp_http_client_is_chunked_response failed, chunked_len: %d\n", millis(), chunked_len);
   }
 
   return ESP_OK;
@@ -89,20 +88,20 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
 
   esp_http_client_handle_t client_handle = esp_http_client_init(&client_config);
   if (!client_handle) {
-    LOG_ERR("OTA", "HTTP Client Handle Failed");
+    Serial.printf("[%lu] [OTA] HTTP Client Handle Failed\n", millis());
     return INTERNAL_UPDATE_ERROR;
   }
 
   esp_err = esp_http_client_set_header(client_handle, "User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
   if (esp_err != ESP_OK) {
-    LOG_ERR("OTA", "esp_http_client_set_header Failed : %s", esp_err_to_name(esp_err));
+    Serial.printf("[%lu] [OTA] esp_http_client_set_header Failed : %s\n", millis(), esp_err_to_name(esp_err));
     esp_http_client_cleanup(client_handle);
     return INTERNAL_UPDATE_ERROR;
   }
 
   esp_err = esp_http_client_perform(client_handle);
   if (esp_err != ESP_OK) {
-    LOG_ERR("OTA", "esp_http_client_perform Failed : %s", esp_err_to_name(esp_err));
+    Serial.printf("[%lu] [OTA] esp_http_client_perform Failed : %s\n", millis(), esp_err_to_name(esp_err));
     esp_http_client_cleanup(client_handle);
     return HTTP_ERROR;
   }
@@ -110,7 +109,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   /* esp_http_client_close will be called inside cleanup as well*/
   esp_err = esp_http_client_cleanup(client_handle);
   if (esp_err != ESP_OK) {
-    LOG_ERR("OTA", "esp_http_client_cleanup Failed : %s", esp_err_to_name(esp_err));
+    Serial.printf("[%lu] [OTA] esp_http_client_cleanupp Failed : %s\n", millis(), esp_err_to_name(esp_err));
     return INTERNAL_UPDATE_ERROR;
   }
 
@@ -120,17 +119,17 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   filter["assets"][0]["size"] = true;
   const DeserializationError error = deserializeJson(doc, local_buf, DeserializationOption::Filter(filter));
   if (error) {
-    LOG_ERR("OTA", "JSON parse failed: %s", error.c_str());
+    Serial.printf("[%lu] [OTA] JSON parse failed: %s\n", millis(), error.c_str());
     return JSON_PARSE_ERROR;
   }
 
   if (!doc["tag_name"].is<std::string>()) {
-    LOG_ERR("OTA", "No tag_name found");
+    Serial.printf("[%lu] [OTA] No tag_name found\n", millis());
     return JSON_PARSE_ERROR;
   }
 
   if (!doc["assets"].is<JsonArray>()) {
-    LOG_ERR("OTA", "No assets found");
+    Serial.printf("[%lu] [OTA] No assets found\n", millis());
     return JSON_PARSE_ERROR;
   }
 
@@ -147,11 +146,11 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   }
 
   if (!updateAvailable) {
-    LOG_ERR("OTA", "No firmware.bin asset found");
+    Serial.printf("[%lu] [OTA] No firmware.bin asset found\n", millis());
     return NO_UPDATE;
   }
 
-  LOG_DBG("OTA", "Found update: %s", latestVersion.c_str());
+  Serial.printf("[%lu] [OTA] Found update: %s\n", millis(), latestVersion.c_str());
   return OK;
 }
 
@@ -234,7 +233,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate() {
 
   esp_err = esp_https_ota_begin(&ota_config, &ota_handle);
   if (esp_err != ESP_OK) {
-    LOG_DBG("OTA", "HTTP OTA Begin Failed: %s", esp_err_to_name(esp_err));
+    Serial.printf("[%lu] [OTA] HTTP OTA Begin Failed: %s\n", millis(), esp_err_to_name(esp_err));
     return INTERNAL_UPDATE_ERROR;
   }
 
@@ -250,23 +249,24 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate() {
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
 
   if (esp_err != ESP_OK) {
-    LOG_ERR("OTA", "esp_https_ota_perform Failed: %s", esp_err_to_name(esp_err));
+    Serial.printf("[%lu] [OTA] esp_https_ota_perform Failed: %s\n", millis(), esp_err_to_name(esp_err));
     esp_https_ota_finish(ota_handle);
     return HTTP_ERROR;
   }
 
   if (!esp_https_ota_is_complete_data_received(ota_handle)) {
-    LOG_ERR("OTA", "esp_https_ota_is_complete_data_received Failed: %s", esp_err_to_name(esp_err));
+    Serial.printf("[%lu] [OTA] esp_https_ota_is_complete_data_received Failed: %s\n", millis(),
+                  esp_err_to_name(esp_err));
     esp_https_ota_finish(ota_handle);
     return INTERNAL_UPDATE_ERROR;
   }
 
   esp_err = esp_https_ota_finish(ota_handle);
   if (esp_err != ESP_OK) {
-    LOG_ERR("OTA", "esp_https_ota_finish Failed: %s", esp_err_to_name(esp_err));
+    Serial.printf("[%lu] [OTA] esp_https_ota_finish Failed: %s\n", millis(), esp_err_to_name(esp_err));
     return INTERNAL_UPDATE_ERROR;
   }
 
-  LOG_INF("OTA", "Update completed");
+  Serial.printf("[%lu] [OTA] Update completed\n", millis());
   return OK;
 }

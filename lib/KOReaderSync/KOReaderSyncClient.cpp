@@ -2,7 +2,7 @@
 
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
-#include <Logging.h>
+#include <HardwareSerial.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 
@@ -30,12 +30,12 @@ bool isHttpsUrl(const std::string& url) { return url.rfind("https://", 0) == 0; 
 
 KOReaderSyncClient::Error KOReaderSyncClient::authenticate() {
   if (!KOREADER_STORE.hasCredentials()) {
-    LOG_DBG("KOSync", "No credentials configured");
+    Serial.printf("[%lu] [KOSync] No credentials configured\n", millis());
     return NO_CREDENTIALS;
   }
 
   std::string url = KOREADER_STORE.getBaseUrl() + "/users/auth";
-  LOG_DBG("KOSync", "Authenticating: %s", url.c_str());
+  Serial.printf("[%lu] [KOSync] Authenticating: %s\n", millis(), url.c_str());
 
   HTTPClient http;
   std::unique_ptr<WiFiClientSecure> secureClient;
@@ -53,7 +53,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::authenticate() {
   const int httpCode = http.GET();
   http.end();
 
-  LOG_DBG("KOSync", "Auth response: %d", httpCode);
+  Serial.printf("[%lu] [KOSync] Auth response: %d\n", millis(), httpCode);
 
   if (httpCode == 200) {
     return OK;
@@ -68,12 +68,12 @@ KOReaderSyncClient::Error KOReaderSyncClient::authenticate() {
 KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& documentHash,
                                                           KOReaderProgress& outProgress) {
   if (!KOREADER_STORE.hasCredentials()) {
-    LOG_DBG("KOSync", "No credentials configured");
+    Serial.printf("[%lu] [KOSync] No credentials configured\n", millis());
     return NO_CREDENTIALS;
   }
 
   std::string url = KOREADER_STORE.getBaseUrl() + "/syncs/progress/" + documentHash;
-  LOG_DBG("KOSync", "Getting progress: %s", url.c_str());
+  Serial.printf("[%lu] [KOSync] Getting progress: %s\n", millis(), url.c_str());
 
   HTTPClient http;
   std::unique_ptr<WiFiClientSecure> secureClient;
@@ -99,7 +99,7 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
     const DeserializationError error = deserializeJson(doc, responseBody);
 
     if (error) {
-      LOG_ERR("KOSync", "JSON parse failed: %s", error.c_str());
+      Serial.printf("[%lu] [KOSync] JSON parse failed: %s\n", millis(), error.c_str());
       return JSON_ERROR;
     }
 
@@ -110,13 +110,14 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
     outProgress.deviceId = doc["device_id"].as<std::string>();
     outProgress.timestamp = doc["timestamp"].as<int64_t>();
 
-    LOG_DBG("KOSync", "Got progress: %.2f%% at %s", outProgress.percentage * 100, outProgress.progress.c_str());
+    Serial.printf("[%lu] [KOSync] Got progress: %.2f%% at %s\n", millis(), outProgress.percentage * 100,
+                  outProgress.progress.c_str());
     return OK;
   }
 
   http.end();
 
-  LOG_DBG("KOSync", "Get progress response: %d", httpCode);
+  Serial.printf("[%lu] [KOSync] Get progress response: %d\n", millis(), httpCode);
 
   if (httpCode == 401) {
     return AUTH_FAILED;
@@ -130,12 +131,12 @@ KOReaderSyncClient::Error KOReaderSyncClient::getProgress(const std::string& doc
 
 KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgress& progress) {
   if (!KOREADER_STORE.hasCredentials()) {
-    LOG_DBG("KOSync", "No credentials configured");
+    Serial.printf("[%lu] [KOSync] No credentials configured\n", millis());
     return NO_CREDENTIALS;
   }
 
   std::string url = KOREADER_STORE.getBaseUrl() + "/syncs/progress";
-  LOG_DBG("KOSync", "Updating progress: %s", url.c_str());
+  Serial.printf("[%lu] [KOSync] Updating progress: %s\n", millis(), url.c_str());
 
   HTTPClient http;
   std::unique_ptr<WiFiClientSecure> secureClient;
@@ -162,12 +163,12 @@ KOReaderSyncClient::Error KOReaderSyncClient::updateProgress(const KOReaderProgr
   std::string body;
   serializeJson(doc, body);
 
-  LOG_DBG("KOSync", "Request body: %s", body.c_str());
+  Serial.printf("[%lu] [KOSync] Request body: %s\n", millis(), body.c_str());
 
   const int httpCode = http.PUT(body.c_str());
   http.end();
 
-  LOG_DBG("KOSync", "Update progress response: %d", httpCode);
+  Serial.printf("[%lu] [KOSync] Update progress response: %d\n", millis(), httpCode);
 
   if (httpCode == 200 || httpCode == 202) {
     return OK;
