@@ -200,7 +200,797 @@ void EpubReaderActivity::loop() {
   }
 
   // --- HELP OVERLAY INTERCEPTION ---
-if (showHelpOverlay) {
+  if (showHelpOverlay) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
+        mappedInput.wasReleased(MappedInputManager::Button::Back) ||
+        mappedInput.wasReleased(MappedInputManager::Button::Left) ||
+        mappedInput.wasReleased(MappedInputManager::Button::Right) ||
+        mappedInput.wasReleased(MappedInputManager::Button::PageBack) ||
+        mappedInput.wasReleased(MappedInputManager::Button::PageForward) ||
+        mappedInput.wasReleased(MappedInputManager::Button::Power)) {
+      showHelpOverlay = false;
+      updateRequired = true;
+      return;
+    }
+    return;
+  }
+
+  // --- DOUBLE CLICK STATE VARIABLES ---
+  static unsigned long lastFormatDecRelease = 0;
+  static bool waitingForFormatDec = false;
+  static unsigned long lastFormatIncRelease = 0;
+  static bool waitingForFormatInc = false;
+
+  if (subActivity) {
+    subActivity->loop();
+    if (pendingSubactivityExit) {
+      pendingSubactivityExit = false;
+      exitActivity();
+      updateRequired = true;
+      skipNextButtonCheck = true;
+    }
+    if (pendingGoHome) {
+      pendingGoHome = false;
+      exitActivity();
+      if (onGoHome) {
+        onGoHome();
+      }
+      return;
+    }
+    return;
+  }
+
+  if (pendingGoHome) {
+    pendingGoHome = false;
+    if (onGoHome) {
+      onGoHome();
+    }
+    return;
+  }
+
+  if (skipNextButtonCheck) {
+    const bool confirmCleared = !mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
+                                !mappedInput.wasReleased(MappedInputManager::Button::Confirm);
+    const bool backCleared = !mappedInput.isPressed(MappedInputManager::Button::Back) &&
+                             !mappedInput.wasReleased(MappedInputManager::Button::Back);
+    if (confirmCleared && backCleared) {
+      skipNextButtonCheck = false;
+    }
+    return;
+  }
+
+  // --- CONFIRM BUTTON (MENU / HELP) ---
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (SETTINGS.buttonModMode == CrossPointSettings::MOD_FULL && mappedInput.getHeldTime() > formattingToggleMs) {
+      showHelpOverlay = true;
+      updateRequired = true;
+      return;
+    }
+
+    xSemaphoreTake(renderingMutex, portMAX_DELAY);
+    const int currentPage = section ? section->currentPage + 1 : 0;
+    const int totalPages = section ? section->pageCount : 0;
+    float bookProgress = 0.0f;
+    if (epub && epub->getBookSize() > 0 && section && section->pageCount > 0) {
+      const float chapterProgress = static_cast<float>(section->currentPage) / static_cast<float>(section->pageCount);
+      bookProgress = epub->calculateProgress(currentSpineIndex, chapterProgress) * 100.0f;
+    }
+    const int bookProgressPercent = clampPercent(static_cast<int>(bookProgress + 0.5f));
+    exitActivity();
+    enterNewActivity(new EpubReaderMenuActivity(
+        this->renderer, this->mappedInput, epub->getTitle(), currentPage, totalPages, bookProgressPercent,
+        SETTINGS.orientation, [this](const uint8_t orientation) { onReaderMenuBack(orientation); },
+        [this](EpubReaderMenuActivity::MenuAction action) { onReaderMenuConfirm(action); }));
+    xSemaphoreGive(renderingMutex);
+  }
+
+  // --- BACK BUTTON LOGIC (Go Home / Dark Mode) ---
+  if (mappedInput.isPressed(MappedInputManager::Button::Back) && mappedInput.getHeldTime() >= goHomeMs) {
+    onGoBack();
+    return;
+  }
+
+  if (SETTINGS.buttonModMode == CrossPointSettings::MOD_FULL) {
+    static unsigned long lastBackRelease = 0;
+    static bool waitingForBack = false;
+
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back) && mappedInput.getHeldTime() < goHomeMs) {
+      if (waitingForBack && (millis() - lastBackRelease < doubleClickMs)) {
+        waitingForBack = false;
+        isNightMode = !isNightMode;
+        GUI.drawPopup(renderer, isNightMode ? "Dark Mode" : "Light Mode");
+        clearPopupTimer = millis() + 1000;
+        updateRequired = true;
+        return;
+      } else {
+        waitingForBack = true;
+        lastBackRelease = millis();
+      }
+    }
+
+    if (waitingForBack && (millis() - lastBackRelease > doubleClickMs)) {
+      waitingForBack = false;
+      onGoHome();
+      return;
+    }
+  } else {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back) && mappedInput.getHeldTime() < goHomeMs) {
+      onGoHome();
+      return;
+    }
+  }
+
+  MappedInputManager::Button btnFormatDec;
+  MappedInputManager::Button btnFormatInc;
+  MappedInputManager::Button btnNavPrev;
+  MappedInputManager::Button btnNavNext;
+
+  if (SETTINGS.orientation == CrossPointSettings::ORIENTATION::PORTRAIT) {
+    if (SETTINGS.swapPortraitControls == 1) {
+      btnFormatDec = MappedInputManager::Button::PageBack;
+      btnFormatInc = MappedInputManager::Button::PageForward;
+      btnNavPrev = MappedInputManager::Button::Left;
+      btnNavNext = MappedInputManager::Button::Right;
+    } else {
+      btnFormatDec = MappedInputManager::Button::Left;
+      btnFormatInc = MappedInputManager::Button::Right;
+      btnNavPrev = MappedInputManager::Button::PageBack;
+      btnNavNext = MappedInputManager::Button::PageForward;
+    }
+  } else {
+    btnFormatDec = MappedInputManager::Button::PageBack;
+    btnFormatInc = MappedInputManager::Button::PageForward;
+    btnNavPrev = MappedInputManager::Button::Left;
+    btnNavNext = MappedInputManager::Button::Right;
+  }
+
+  // --- HANDLE FORMAT DEC ---
+  bool executeFormatDecSingle = false;
+
+  if (SETTINGS.buttonModMode != CrossPointSettings::MOD_OFF && mappedInput.wasReleased(btnFormatDec)) {
+    if (SETTINGS.buttonModMode == CrossPointSettings::MOD_FULL && mappedInput.getHeldTime() > formattingToggleMs) {
+      waitingForFormatDec = false;
+      xSemaphoreTake(renderingMutex, portMAX_DELAY);
+      if (section) {
+        cachedSpineIndex = currentSpineIndex;
+        cachedChapterTotalPageCount = section->pageCount;
+        nextPageNumber = section->currentPage;
+      }
+      SETTINGS.lineSpacing++;
+      if (SETTINGS.lineSpacing >= CrossPointSettings::LINE_COMPRESSION_COUNT) {
+        SETTINGS.lineSpacing = 0;
+      }
+      const char* spacingMsg = "Spacing: Normal";
+      if (SETTINGS.lineSpacing == CrossPointSettings::LINE_COMPRESSION::TIGHT) {
+        spacingMsg = "Spacing: Tight";
+      } else if (SETTINGS.lineSpacing == CrossPointSettings::LINE_COMPRESSION::WIDE) {
+        spacingMsg = "Spacing: Wide";
+      }
+      SETTINGS.saveToFile();
+      section.reset();
+      xSemaphoreGive(renderingMutex);
+      GUI.drawPopup(renderer, spacingMsg);
+      clearPopupTimer = millis() + 1000;
+      updateRequired = true;
+      return;
+    } else {
+      if (SETTINGS.buttonModMode == CrossPointSettings::MOD_FULL && waitingForFormatDec &&
+          (millis() - lastFormatDecRelease < doubleClickMs)) {
+        waitingForFormatDec = false;
+        xSemaphoreTake(renderingMutex, portMAX_DELAY);
+        if (section) {
+          cachedSpineIndex = currentSpineIndex;
+          cachedChapterTotalPageCount = section->pageCount;
+          nextPageNumber = section->currentPage;
+        }
+        if (SETTINGS.paragraphAlignment == CrossPointSettings::PARAGRAPH_ALIGNMENT::LEFT_ALIGN) {
+          SETTINGS.paragraphAlignment = CrossPointSettings::PARAGRAPH_ALIGNMENT::JUSTIFIED;
+          GUI.drawPopup(renderer, "Align: Justified");
+        } else {
+          SETTINGS.paragraphAlignment = CrossPointSettings::PARAGRAPH_ALIGNMENT::LEFT_ALIGN;
+          GUI.drawPopup(renderer, "Align: Left");
+        }
+        SETTINGS.saveToFile();
+        section.reset();
+        xSemaphoreGive(renderingMutex);
+        clearPopupTimer = millis() + 1000;
+        updateRequired = true;
+        return;
+      } else {
+        if (SETTINGS.buttonModMode == CrossPointSettings::MOD_SIMPLE) {
+          executeFormatDecSingle = true;
+        } else {
+          waitingForFormatDec = true;
+          lastFormatDecRelease = millis();
+        }
+      }
+    }
+  }
+
+  if (waitingForFormatDec && (millis() - lastFormatDecRelease > doubleClickMs)) {
+    waitingForFormatDec = false;
+    executeFormatDecSingle = true;
+  }
+
+  if (executeFormatDecSingle) {
+    bool changed = false;
+    bool limitReached = false;
+    xSemaphoreTake(renderingMutex, portMAX_DELAY);
+    if (SETTINGS.fontSize > CrossPointSettings::FONT_SIZE::SMALL) {
+      SETTINGS.fontSize--;
+      changed = true;
+    } else {
+      limitReached = true;
+    }
+    if (changed) {
+      if (section) {
+        cachedSpineIndex = currentSpineIndex;
+        cachedChapterTotalPageCount = section->pageCount;
+        nextPageNumber = section->currentPage;
+      }
+      SETTINGS.saveToFile();
+      section.reset();
+    }
+    xSemaphoreGive(renderingMutex);
+    if (changed) {
+      updateRequired = true;
+    } else if (limitReached) {
+      GUI.drawPopup(renderer, "Min Size Reached");
+      clearPopupTimer = millis() + 1000;
+    }
+  }
+
+  // --- HANDLE FORMAT INC ---
+  bool executeFormatIncSingle = false;
+
+  if (SETTINGS.buttonModMode != CrossPointSettings::MOD_OFF && mappedInput.wasReleased(btnFormatInc)) {
+    if (SETTINGS.buttonModMode == CrossPointSettings::MOD_FULL && mappedInput.getHeldTime() > formattingToggleMs) {
+      waitingForFormatInc = false;
+      uint8_t newOrientation = (SETTINGS.orientation == CrossPointSettings::ORIENTATION::PORTRAIT)
+                                   ? CrossPointSettings::ORIENTATION::LANDSCAPE_CCW
+                                   : CrossPointSettings::ORIENTATION::PORTRAIT;
+      applyOrientation(newOrientation);
+      const char* orientMsg = (newOrientation == CrossPointSettings::ORIENTATION::PORTRAIT) ? "Portrait" : "Landscape";
+      GUI.drawPopup(renderer, orientMsg);
+      clearPopupTimer = millis() + 1000;
+      updateRequired = true;
+      return;
+    } else {
+      if (SETTINGS.buttonModMode == CrossPointSettings::MOD_FULL && waitingForFormatInc &&
+          (millis() - lastFormatIncRelease < doubleClickMs)) {
+        // DOUBLE CLICK: Toggle Bold (Full Mode Only)
+        waitingForFormatInc = false;
+        xSemaphoreTake(renderingMutex, portMAX_DELAY);
+
+        if (section) {
+          cachedSpineIndex = currentSpineIndex;
+          cachedChapterTotalPageCount = section->pageCount;
+          nextPageNumber = section->currentPage;
+        }
+
+        SETTINGS.forceBoldText = (SETTINGS.forceBoldText == 0) ? 1 : 0;
+        const char* boldMsg = (SETTINGS.forceBoldText == 1) ? "Bold: ON" : "Bold: OFF";
+        SETTINGS.saveToFile();
+
+        // Reset section to force rebuild with proper font metrics
+        if (epub) {
+          uint16_t backupSpine = currentSpineIndex;
+          uint16_t backupPage = section ? section->currentPage : 0;
+          uint16_t backupPageCount = section ? section->pageCount : 0;
+
+          section.reset();
+          saveProgress(backupSpine, backupPage, backupPageCount);
+        } else {
+          section.reset();
+        }
+
+        xSemaphoreGive(renderingMutex);
+        GUI.drawPopup(renderer, boldMsg);
+        clearPopupTimer = millis() + 1000;
+        updateRequired = true;
+        return;
+      } else {
+        if (SETTINGS.buttonModMode == CrossPointSettings::MOD_SIMPLE) {
+          executeFormatIncSingle = true;
+        } else {
+          waitingForFormatInc = true;
+          lastFormatIncRelease = millis();
+        }
+      }
+    }
+  }
+
+  if (waitingForFormatInc && (millis() - lastFormatIncRelease > doubleClickMs)) {
+    waitingForFormatInc = false;
+    executeFormatIncSingle = true;
+  }
+
+  if (executeFormatIncSingle) {
+    bool changed = false;
+    bool limitReached = false;
+    xSemaphoreTake(renderingMutex, portMAX_DELAY);
+    if (SETTINGS.fontSize < CrossPointSettings::FONT_SIZE::EXTRA_LARGE) {
+      SETTINGS.fontSize++;
+      changed = true;
+    } else {
+      limitReached = true;
+    }
+    if (changed) {
+      if (section) {
+        cachedSpineIndex = currentSpineIndex;
+        cachedChapterTotalPageCount = section->pageCount;
+        nextPageNumber = section->currentPage;
+      }
+      SETTINGS.saveToFile();
+      section.reset();
+    }
+    xSemaphoreGive(renderingMutex);
+    if (changed) {
+      updateRequired = true;
+    } else if (limitReached) {
+      GUI.drawPopup(renderer, "Max Size Reached");
+      clearPopupTimer = millis() + 1000;
+    }
+  }
+
+  // --- HANDLE NAVIGATION BUTTONS ---
+  const bool usePressForPageTurn = !SETTINGS.longPressChapterSkip;
+
+  bool prevTriggered = usePressForPageTurn ? mappedInput.wasPressed(btnNavPrev) : mappedInput.wasReleased(btnNavPrev);
+
+  const bool powerPageTurn = SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PAGE_TURN &&
+                             mappedInput.wasReleased(MappedInputManager::Button::Power);
+
+  bool nextTriggered = usePressForPageTurn ? (mappedInput.wasPressed(btnNavNext) || powerPageTurn)
+                                           : (mappedInput.wasReleased(btnNavNext) || powerPageTurn);
+
+  if (SETTINGS.buttonModMode == CrossPointSettings::MOD_OFF) {
+    if (usePressForPageTurn) {
+      if (mappedInput.wasPressed(btnFormatDec)) prevTriggered = true;
+      if (mappedInput.wasPressed(btnFormatInc)) nextTriggered = true;
+    } else {
+      if (mappedInput.wasReleased(btnFormatDec)) prevTriggered = true;
+      if (mappedInput.wasReleased(btnFormatInc)) nextTriggered = true;
+    }
+  }
+
+  if (!prevTriggered && !nextTriggered) {
+    return;
+  }
+
+  if (currentSpineIndex > 0 && currentSpineIndex >= epub->getSpineItemsCount()) {
+    currentSpineIndex = epub->getSpineItemsCount() - 1;
+    nextPageNumber = UINT16_MAX;
+    updateRequired = true;
+    return;
+  }
+
+  const bool skipChapter = SETTINGS.longPressChapterSkip && mappedInput.getHeldTime() > skipChapterMs;
+
+  if (skipChapter) {
+    xSemaphoreTake(renderingMutex, portMAX_DELAY);
+    nextPageNumber = 0;
+    currentSpineIndex = nextTriggered ? currentSpineIndex + 1 : currentSpineIndex - 1;
+    section.reset();
+    xSemaphoreGive(renderingMutex);
+    updateRequired = true;
+    return;
+  }
+
+  if (!section) {
+    updateRequired = true;
+    return;
+  }
+
+  if (prevTriggered) {
+    if (section->currentPage > 0) {
+      section->currentPage--;
+    } else {
+      xSemaphoreTake(renderingMutex, portMAX_DELAY);
+      nextPageNumber = UINT16_MAX;
+      currentSpineIndex--;
+      section.reset();
+      xSemaphoreGive(renderingMutex);
+    }
+    updateRequired = true;
+  } else {
+    if (section->currentPage < section->pageCount - 1) {
+      section->currentPage++;
+    } else {
+      xSemaphoreTake(renderingMutex, portMAX_DELAY);
+      nextPageNumber = 0;
+      currentSpineIndex++;
+      section.reset();
+      xSemaphoreGive(renderingMutex);
+    }
+    updateRequired = true;
+  }
+}
+
+void EpubReaderActivity::onReaderMenuBack(const uint8_t orientation) {
+  exitActivity();
+  applyOrientation(orientation);
+  updateRequired = true;
+}
+
+void EpubReaderActivity::jumpToPercent(int percent) {
+  if (!epub) {
+    return;
+  }
+
+  const size_t bookSize = epub->getBookSize();
+  if (bookSize == 0) {
+    return;
+  }
+
+  percent = clampPercent(percent);
+
+  size_t targetSize =
+      (bookSize / 100) * static_cast<size_t>(percent) + (bookSize % 100) * static_cast<size_t>(percent) / 100;
+  if (percent >= 100) {
+    targetSize = bookSize - 1;
+  }
+
+  const int spineCount = epub->getSpineItemsCount();
+  if (spineCount == 0) {
+    return;
+  }
+
+  int targetSpineIndex = spineCount - 1;
+  size_t prevCumulative = 0;
+
+  for (int i = 0; i < spineCount; i++) {
+    const size_t cumulative = epub->getCumulativeSpineItemSize(i);
+    if (targetSize <= cumulative) {
+      targetSpineIndex = i;
+      prevCumulative = (i > 0) ? epub->getCumulativeSpineItemSize(i - 1) : 0;
+      break;
+    }
+  }
+
+  const size_t cumulative = epub->getCumulativeSpineItemSize(targetSpineIndex);
+  const size_t spineSize = (cumulative > prevCumulative) ? (cumulative - prevCumulative) : 0;
+  pendingSpineProgress =
+      (spineSize == 0) ? 0.0f : static_cast<float>(targetSize - prevCumulative) / static_cast<float>(spineSize);
+  if (pendingSpineProgress < 0.0f) {
+    pendingSpineProgress = 0.0f;
+  } else if (pendingSpineProgress > 1.0f) {
+    pendingSpineProgress = 1.0f;
+  }
+
+  xSemaphoreTake(renderingMutex, portMAX_DELAY);
+  currentSpineIndex = targetSpineIndex;
+  nextPageNumber = 0;
+  pendingPercentJump = true;
+  section.reset();
+  xSemaphoreGive(renderingMutex);
+}
+
+void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action) {
+  switch (action) {
+    case EpubReaderMenuActivity::MenuAction::SELECT_CHAPTER: {
+      const int currentP = section ? section->currentPage : 0;
+      const int totalP = section ? section->pageCount : 0;
+      const int spineIdx = currentSpineIndex;
+      const std::string path = epub->getPath();
+
+      xSemaphoreTake(renderingMutex, portMAX_DELAY);
+      exitActivity();
+      enterNewActivity(new EpubReaderChapterSelectionActivity(
+          this->renderer, this->mappedInput, epub, path, spineIdx, currentP, totalP,
+          [this] {
+            exitActivity();
+            updateRequired = true;
+          },
+          [this](const int newSpineIndex) {
+            if (currentSpineIndex != newSpineIndex) {
+              currentSpineIndex = newSpineIndex;
+              nextPageNumber = 0;
+              section.reset();
+            }
+            exitActivity();
+            updateRequired = true;
+          },
+          [this](const int newSpineIndex, const int newPage) {
+            if (currentSpineIndex != newSpineIndex || (section && section->currentPage != newPage)) {
+              currentSpineIndex = newSpineIndex;
+              nextPageNumber = newPage;
+              section.reset();
+            }
+            exitActivity();
+            updateRequired = true;
+          }));
+      xSemaphoreGive(renderingMutex);
+      break;
+    }
+    case EpubReaderMenuActivity::MenuAction::GO_TO_PERCENT: {
+      float bookProgress = 0.0f;
+      if (epub && epub->getBookSize() > 0 && section && section->pageCount > 0) {
+        const float chapterProgress = static_cast<float>(section->currentPage) / static_cast<float>(section->pageCount);
+        bookProgress = epub->calculateProgress(currentSpineIndex, chapterProgress) * 100.0f;
+      }
+      const int initialPercent = clampPercent(static_cast<int>(bookProgress + 0.5f));
+      xSemaphoreTake(renderingMutex, portMAX_DELAY);
+      exitActivity();
+      enterNewActivity(new EpubReaderPercentSelectionActivity(
+          renderer, mappedInput, initialPercent,
+          [this](const int percent) {
+            jumpToPercent(percent);
+            exitActivity();
+            updateRequired = true;
+          },
+          [this]() {
+            exitActivity();
+            updateRequired = true;
+          }));
+      xSemaphoreGive(renderingMutex);
+      break;
+    }
+    case EpubReaderMenuActivity::MenuAction::GO_HOME: {
+      pendingGoHome = true;
+      break;
+    }
+    case EpubReaderMenuActivity::MenuAction::DELETE_CACHE: {
+      xSemaphoreTake(renderingMutex, portMAX_DELAY);
+      if (epub) {
+        uint16_t backupSpine = currentSpineIndex;
+        uint16_t backupPage = section->currentPage;
+        uint16_t backupPageCount = section->pageCount;
+
+        section.reset();
+        epub->clearCache();
+        epub->setupCacheDir();
+
+        saveProgress(backupSpine, backupPage, backupPageCount);
+      }
+      xSemaphoreGive(renderingMutex);
+      pendingGoHome = true;
+      break;
+    }
+    case EpubReaderMenuActivity::MenuAction::SYNC: {
+      if (KOREADER_STORE.hasCredentials()) {
+        xSemaphoreTake(renderingMutex, portMAX_DELAY);
+        const int currentPage = section ? section->currentPage : 0;
+        const int totalPages = section ? section->pageCount : 0;
+        exitActivity();
+        enterNewActivity(new KOReaderSyncActivity(
+            renderer, mappedInput, epub, epub->getPath(), currentSpineIndex, currentPage, totalPages,
+            [this]() { pendingSubactivityExit = true; },
+            [this](int newSpineIndex, int newPage) {
+              if (currentSpineIndex != newSpineIndex || (section && section->currentPage != newPage)) {
+                currentSpineIndex = newSpineIndex;
+                nextPageNumber = newPage;
+                section.reset();
+              }
+              pendingSubactivityExit = true;
+            }));
+        xSemaphoreGive(renderingMutex);
+      }
+      break;
+    }
+    case EpubReaderMenuActivity::MenuAction::BUTTON_MOD_SETTINGS: {
+      SETTINGS.buttonModMode = (SETTINGS.buttonModMode + 1) % CrossPointSettings::BUTTON_MOD_MODE_COUNT;
+      SETTINGS.saveToFile();
+      break;
+    }
+    case EpubReaderMenuActivity::MenuAction::SWAP_CONTROLS: {
+      SETTINGS.swapPortraitControls = (SETTINGS.swapPortraitControls == 0) ? 1 : 0;
+      SETTINGS.saveToFile();
+      pendingSubactivityExit = true;
+      break;
+    }
+  }
+}
+
+void EpubReaderActivity::applyOrientation(const uint8_t orientation) {
+  if (SETTINGS.orientation == orientation) {
+    return;
+  }
+
+  xSemaphoreTake(renderingMutex, portMAX_DELAY);
+  if (section) {
+    cachedSpineIndex = currentSpineIndex;
+    cachedChapterTotalPageCount = section->pageCount;
+    nextPageNumber = section->currentPage;
+  }
+
+  SETTINGS.orientation = orientation;
+  SETTINGS.saveToFile();
+
+  applyReaderOrientation(renderer, SETTINGS.orientation);
+
+  section.reset();
+  xSemaphoreGive(renderingMutex);
+}
+
+void EpubReaderActivity::displayTaskLoop() {
+  while (true) {
+    if (updateRequired) {
+      updateRequired = false;
+      xSemaphoreTake(renderingMutex, portMAX_DELAY);
+      renderScreen();
+      xSemaphoreGive(renderingMutex);
+    }
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+  }
+}
+
+void EpubReaderActivity::renderScreen() {
+  if (!epub) {
+    return;
+  }
+
+  if (currentSpineIndex < 0) {
+    currentSpineIndex = 0;
+  }
+  if (currentSpineIndex > epub->getSpineItemsCount()) {
+    currentSpineIndex = epub->getSpineItemsCount();
+  }
+
+  if (currentSpineIndex == epub->getSpineItemsCount()) {
+    renderer.clearScreen();
+    renderer.drawCenteredText(UI_12_FONT_ID, 300, "End of book", true, EpdFontFamily::BOLD);
+    renderer.displayBuffer();
+    return;
+  }
+
+  int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;
+  renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
+                                   &orientedMarginLeft);
+  orientedMarginTop += SETTINGS.screenMargin;
+  orientedMarginLeft += SETTINGS.screenMargin;
+  orientedMarginRight += SETTINGS.screenMargin;
+  orientedMarginBottom += SETTINGS.screenMargin;
+
+  auto metrics = UITheme::getInstance().getMetrics();
+
+  if (SETTINGS.statusBar != CrossPointSettings::STATUS_BAR_MODE::NONE) {
+    const bool showProgressBar = SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::BOOK_PROGRESS_BAR ||
+                                 SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::ONLY_BOOK_PROGRESS_BAR ||
+                                 SETTINGS.statusBar == CrossPointSettings::STATUS_BAR_MODE::CHAPTER_PROGRESS_BAR;
+    orientedMarginBottom += statusBarMargin - SETTINGS.screenMargin +
+                            (showProgressBar ? (metrics.bookProgressBarHeight + progressBarMarginTop) : 0);
+  }
+
+  if (!section) {
+    const auto filepath = epub->getSpineItem(currentSpineIndex).href;
+    Serial.printf("[%lu] [ERS] Loading file: %s, index: %d\n", millis(), filepath.c_str(), currentSpineIndex);
+    section = std::unique_ptr<Section>(new Section(epub, currentSpineIndex, renderer));
+
+    const uint16_t viewportWidth = renderer.getScreenWidth() - orientedMarginLeft - orientedMarginRight;
+    const uint16_t viewportHeight = renderer.getScreenHeight() - orientedMarginTop - orientedMarginBottom;
+
+    bool useBold = (SETTINGS.forceBoldText == 1);
+
+    // TURN ON GLOBAL BOLD FOR CACHE BUILDER
+    EpdFontFamily::globalForceBold = useBold;
+
+    if (!section->loadSectionFile(SETTINGS.getReaderFontId(), SETTINGS.getReaderLineCompression(),
+                                  SETTINGS.extraParagraphSpacing, SETTINGS.paragraphAlignment, viewportWidth,
+                                  viewportHeight, SETTINGS.hyphenationEnabled, SETTINGS.embeddedStyle, useBold)) {
+      Serial.printf("[%lu] [ERS] Cache not found, building...\n", millis());
+
+      const auto popupFn = [this]() { GUI.drawPopup(renderer, "Indexing..."); };
+
+      if (!section->createSectionFile(SETTINGS.getReaderFontId(), SETTINGS.getReaderLineCompression(),
+                                      SETTINGS.extraParagraphSpacing, SETTINGS.paragraphAlignment, viewportWidth,
+                                      viewportHeight, SETTINGS.hyphenationEnabled, SETTINGS.embeddedStyle, useBold,
+                                      popupFn)) {
+        Serial.printf("[%lu] [ERS] Failed to persist page data to SD\n", millis());
+        section.reset();
+
+        // Ensure bold is off before exiting on fail
+        EpdFontFamily::globalForceBold = false;
+        return;
+      }
+    } else {
+      Serial.printf("[%lu] [ERS] Cache found, skipping build...\n", millis());
+    }
+
+    // TURN GLOBAL BOLD BACK OFF
+    EpdFontFamily::globalForceBold = false;
+
+    if (nextPageNumber == UINT16_MAX) {
+      section->currentPage = section->pageCount - 1;
+    } else {
+      section->currentPage = nextPageNumber;
+    }
+
+    if (cachedChapterTotalPageCount > 0) {
+      if (currentSpineIndex == cachedSpineIndex && section->pageCount != cachedChapterTotalPageCount) {
+        float progress = static_cast<float>(section->currentPage) / static_cast<float>(cachedChapterTotalPageCount);
+        int newPage = static_cast<int>(progress * section->pageCount);
+        section->currentPage = newPage;
+      }
+      cachedChapterTotalPageCount = 0;
+    }
+
+    if (pendingPercentJump && section->pageCount > 0) {
+      int newPage = static_cast<int>(pendingSpineProgress * static_cast<float>(section->pageCount));
+      if (newPage >= section->pageCount) {
+        newPage = section->pageCount - 1;
+      }
+      section->currentPage = newPage;
+      pendingPercentJump = false;
+    }
+  }
+
+  renderer.clearScreen();
+
+  if (section->pageCount == 0) {
+    Serial.printf("[%lu] [ERS] No pages to render\n", millis());
+    renderer.drawCenteredText(UI_12_FONT_ID, 300, "Empty chapter", true, EpdFontFamily::BOLD);
+    renderStatusBar(orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+    renderer.displayBuffer();
+    return;
+  }
+
+  if (section->currentPage < 0 || section->currentPage >= section->pageCount) {
+    Serial.printf("[%lu] [ERS] Page out of bounds: %d (max %d)\n", millis(), section->currentPage, section->pageCount);
+    renderer.drawCenteredText(UI_12_FONT_ID, 300, "Out of bounds", true, EpdFontFamily::BOLD);
+    renderStatusBar(orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+    renderer.displayBuffer();
+    return;
+  }
+
+  {
+    auto p = section->loadPageFromSectionFile();
+    if (!p) {
+      Serial.printf("[%lu] [ERS] Failed to load page from SD - clearing section cache\n", millis());
+      section->clearCache();
+      section.reset();
+      return renderScreen();
+    }
+    const auto start = millis();
+    renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+    Serial.printf("[%lu] [ERS] Rendered page in %dms\n", millis(), millis() - start);
+  }
+  saveProgress(currentSpineIndex, section->currentPage, section->pageCount);
+}
+
+void EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageCount) {
+  FsFile f;
+  if (Storage.openFileForWrite("ERS", epub->getCachePath() + "/progress.bin", f)) {
+    uint8_t data[6];
+    data[0] = currentSpineIndex & 0xFF;
+    data[1] = (currentSpineIndex >> 8) & 0xFF;
+    data[2] = currentPage & 0xFF;
+    data[3] = (currentPage >> 8) & 0xFF;
+    data[4] = pageCount & 0xFF;
+    data[5] = (pageCount >> 8) & 0xFF;
+    f.write(data, 6);
+    f.close();
+    Serial.printf("[ERS] Progress saved: Chapter %d, Page %d\n", spineIndex, currentPage);
+  } else {
+    Serial.printf("[ERS] Could not save progress!\n");
+  }
+}
+
+void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
+                                        const int orientedMarginRight, const int orientedMarginBottom,
+                                        const int orientedMarginLeft) {
+  bool useBold = (SETTINGS.forceBoldText == 1);
+
+  // 1. Draw the normal black text
+  EpdFontFamily::globalForceBold = useBold;
+  page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
+
+  // 2. Thicken the core black text by shifting 1 pixel right
+  if (SETTINGS.textAntiAliasing && !showHelpOverlay && !isNightMode) {
+    page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft + 1, orientedMarginTop);
+  }
+
+  // IMMEDIATELY TURN OFF BOLD SO THE UI REMAINS NORMAL
+  EpdFontFamily::globalForceBold = false;
+
+  renderStatusBar(orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+
+  if (isNightMode) {
+    renderer.invertScreen();
+  }
+
+  // --- HELP OVERLAY RENDERING ---
+  if (showHelpOverlay) {
     const int w = renderer.getScreenWidth();
     const int h = renderer.getScreenHeight();
 

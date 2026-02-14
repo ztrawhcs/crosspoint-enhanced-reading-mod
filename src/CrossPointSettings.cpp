@@ -237,10 +237,11 @@ bool CrossPointSettings::loadFromFile() {
 
   } while (false);
 
-  if (frontButtonMappingRead)
+  if (frontButtonMappingRead) {
     validateFrontButtonMapping(*this);
-  else
+  } else {
     applyLegacyFrontButtonLayout(*this);
+  }
 
   inputFile.close();
   Serial.printf("[%lu] [CPS] Settings loaded from file\n", millis());
