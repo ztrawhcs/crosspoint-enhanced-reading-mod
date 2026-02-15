@@ -61,7 +61,8 @@ void Section::writeSectionFileHeader(const int fontId, const float lineCompressi
 
 bool Section::loadSectionFile(const int fontId, const float lineCompression, const bool extraParagraphSpacing,
                               const uint8_t paragraphAlignment, const uint16_t viewportWidth,
-                              const uint16_t viewportHeight, const bool hyphenationEnabled, const bool embeddedStyle, const bool useBold) {
+                              const uint16_t viewportHeight, const bool hyphenationEnabled, const bool embeddedStyle,
+                              const bool useBold) {
   if (!Storage.openFileForRead("SCT", filePath, file)) {
     return false;
   }
@@ -258,5 +259,4 @@ std::unique_ptr<Page> Section::loadPageFromSectionFile() {
   file.close();
   return page;
 }
-
 }
