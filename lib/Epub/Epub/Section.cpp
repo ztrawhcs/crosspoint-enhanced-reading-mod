@@ -2,6 +2,7 @@
 
 #include <HalStorage.h>
 #include <Serialization.h>
+#include <Logging.h>
 
 #include "Page.h"
 #include "hyphenation/Hyphenator.h"
@@ -16,16 +17,16 @@ constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) +
 
 uint32_t Section::onPageComplete(std::unique_ptr<Page> page) {
   if (!file) {
-    Serial.printf("[%lu] [SCT] File not open for writing page %d\n", millis(), pageCount);
+    LOG_ERR("SCT", "File not open for writing page %d", pageCount);
     return 0;
   }
 
   const uint32_t position = file.position();
   if (!page->serialize(file)) {
-    Serial.printf("[%lu] [SCT] Failed to serialize page %d\n", millis(), pageCount);
+    LOG_ERR("SCT", "Failed to serialize page %d", pageCount);
     return 0;
   }
-  Serial.printf("[%lu] [SCT] Page %d processed\n", millis(), pageCount);
+  LOG_DBG("SCT", "Page %d processed", pageCount);
 
   pageCount++;
   return position;
@@ -36,7 +37,7 @@ void Section::writeSectionFileHeader(const int fontId, const float lineCompressi
                                      const uint16_t viewportHeight, const bool hyphenationEnabled,
                                      const bool embeddedStyle, const bool forceBold) {
   if (!file) {
-    Serial.printf("[%lu] [SCT] File not open for writing header\n", millis());
+    LOG_ERR("SCT", "File not open for writing header");
     return;
   }
   static_assert(HEADER_SIZE == sizeof(SECTION_FILE_VERSION) + sizeof(fontId) + sizeof(lineCompression) +
@@ -71,7 +72,7 @@ bool Section::loadSectionFile(const int fontId, const float lineCompression, con
     serialization::readPod(file, version);
     if (version != SECTION_FILE_VERSION) {
       file.close();
-      Serial.printf("[%lu] [SCT] Deserialization failed: Unknown version %u\n", millis(), version);
+      LOG_ERR("SCT", "Deserialization failed: Unknown version %u", version);
       clearCache();
       return false;
     }
@@ -101,7 +102,7 @@ bool Section::loadSectionFile(const int fontId, const float lineCompression, con
         hyphenationEnabled != fileHyphenationEnabled || embeddedStyle != fileEmbeddedStyle ||
         forceBold != fileForceBold) {
       file.close();
-      Serial.printf("[%lu] [SCT] Deserialization failed: Parameters do not match\n", millis());
+      LOG_DBG("SCT", "Deserialization failed: Parameters do not match");
       clearCache();
       return false;
     }
@@ -109,22 +110,22 @@ bool Section::loadSectionFile(const int fontId, const float lineCompression, con
 
   serialization::readPod(file, pageCount);
   file.close();
-  Serial.printf("[%lu] [SCT] Deserialization succeeded: %d pages\n", millis(), pageCount);
+  LOG_INF("SCT", "Deserialization succeeded: %d pages", pageCount);
   return true;
 }
 
 bool Section::clearCache() const {
   if (!Storage.exists(filePath.c_str())) {
-    Serial.printf("[%lu] [SCT] Cache does not exist, no action needed\n", millis());
+    LOG_INF("SCT", "Cache does not exist, no action needed");
     return true;
   }
 
   if (!Storage.remove(filePath.c_str())) {
-    Serial.printf("[%lu] [SCT] Failed to clear cache\n", millis());
+    LOG_ERR("SCT", "Failed to clear cache");
     return false;
   }
 
-  Serial.printf("[%lu] [SCT] Cache cleared successfully\n", millis());
+  LOG_INF("SCT", "Cache cleared successfully");
   return true;
 }
 
@@ -144,7 +145,7 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
   uint32_t fileSize = 0;
   for (int attempt = 0; attempt < 3 && !success; attempt++) {
     if (attempt > 0) {
-      Serial.printf("[%lu] [SCT] Retrying stream (attempt %d)...\n", millis(), attempt + 1);
+      LOG_INF("SCT", "Retrying stream (attempt %d)...", attempt + 1);
       delay(50);
     }
 
@@ -162,16 +163,16 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
 
     if (!success && Storage.exists(tmpHtmlPath.c_str())) {
       Storage.remove(tmpHtmlPath.c_str());
-      Serial.printf("[%lu] [SCT] Removed incomplete temp file after failed attempt\n", millis());
+      LOG_ERR("SCT", "Removed incomplete temp file after failed attempt");
     }
   }
 
   if (!success) {
-    Serial.printf("[%lu] [SCT] Failed to stream item contents to temp file after retries\n", millis());
+    LOG_ERR("SCT", "Failed to stream item contents to temp file after retries");
     return false;
   }
 
-  Serial.printf("[%lu] [SCT] Streamed temp HTML to %s (%d bytes)\n", millis(), tmpHtmlPath.c_str(), fileSize);
+  LOG_INF("SCT", "Streamed temp HTML to %s (%d bytes)", tmpHtmlPath.c_str(), fileSize);
 
   if (!Storage.openFileForWrite("SCT", filePath, file)) {
     return false;
@@ -182,20 +183,33 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
 
   std::vector<uint32_t> lut = {};
 
+  CssParser* cssParser = nullptr;
+  if (embeddedStyle) {
+    cssParser = epub->getCssParser();
+    if (cssParser) {
+      if (!cssParser->loadFromCache()) {
+        LOG_ERR("SCT", "Failed to load CSS from cache");
+      }
+    }
+  }
+
   ChapterHtmlSlimParser visitor(
       tmpHtmlPath, renderer, fontId, lineCompression, extraParagraphSpacing, paragraphAlignment, viewportWidth,
       viewportHeight, hyphenationEnabled,
       [this, &lut](std::unique_ptr<Page> page) { lut.emplace_back(this->onPageComplete(std::move(page))); },
-      embeddedStyle, popupFn, embeddedStyle ? epub->getCssParser() : nullptr);
+      embeddedStyle, popupFn, cssParser);
 
   Hyphenator::setPreferredLanguage(epub->getLanguage());
   success = visitor.parseAndBuildPages();
 
   Storage.remove(tmpHtmlPath.c_str());
   if (!success) {
-    Serial.printf("[%lu] [SCT] Failed to parse XML and build pages\n", millis());
+    LOG_ERR("SCT", "Failed to parse XML and build pages");
     file.close();
     Storage.remove(filePath.c_str());
+    if (cssParser) {
+      cssParser->clear();
+    }
     return false;
   }
 
@@ -211,7 +225,7 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
   }
 
   if (hasFailedLutRecords) {
-    Serial.printf("[%lu] [SCT] Failed to write LUT due to invalid page positions\n", millis());
+    LOG_ERR("SCT", "Failed to write LUT due to invalid page positions");
     file.close();
     Storage.remove(filePath.c_str());
     return false;
@@ -221,6 +235,9 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
   serialization::writePod(file, pageCount);
   serialization::writePod(file, lutOffset);
   file.close();
+  if (cssParser) {
+    cssParser->clear();
+  }
   return true;
 }
 
