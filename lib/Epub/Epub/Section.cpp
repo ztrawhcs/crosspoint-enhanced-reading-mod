@@ -2,7 +2,7 @@
 
 #include <HalStorage.h>
 #include <Serialization.h>
-#include <Logging.h>
+#include "Logging.h"
 
 #include "Page.h"
 #include "hyphenation/Hyphenator.h"
