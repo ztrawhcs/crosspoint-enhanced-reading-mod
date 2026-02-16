@@ -3,7 +3,7 @@
 #include <HalStorage.h>
 #include <Serialization.h>
 
-#include "Logging.h"
+#include "../../Logging/Logging.h"
 #include "Page.h"
 #include "hyphenation/Hyphenator.h"
 #include "parsers/ChapterHtmlSlimParser.h"
