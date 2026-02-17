@@ -971,14 +971,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
                                         const int orientedMarginLeft) {
   bool useBold = (SETTINGS.forceBoldText == 1);
 
-  // 1. Draw the normal black text
+  // Draw the normal black text
   EpdFontFamily::globalForceBold = useBold;
   page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
-
-  // 2. Thicken the core black text by shifting 1 pixel right
-  if (SETTINGS.textAntiAliasing && !showHelpOverlay && !isNightMode) {
-    page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft + 1, orientedMarginTop);
-  }
 
   // IMMEDIATELY TURN OFF BOLD SO THE UI REMAINS NORMAL
   EpdFontFamily::globalForceBold = false;
@@ -1057,7 +1052,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 
   renderer.storeBwBuffer();
 
-  if (SETTINGS.textAntiAliasing && !showHelpOverlay && !isNightMode) {  // Don't anti-alias the help overlay
+  if (SETTINGS.textAntiAliasing && !showHelpOverlay && !isNightMode) {
     renderer.clearScreen(0x00);
 
     // TURN ON BOLD FOR GRAYSCALE PASSES
@@ -1066,7 +1061,6 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     // --- LSB (Light Grays) Pass ---
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
     page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
-    page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft + 1, orientedMarginTop);
     renderer.copyGrayscaleLsbBuffers();
 
     renderer.clearScreen(0x00);
@@ -1074,7 +1068,6 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     // --- MSB (Dark Grays) Pass ---
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
     page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
-    page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft + 1, orientedMarginTop);
     renderer.copyGrayscaleMsbBuffers();
 
     // TURN BOLD OFF BEFORE FINAL FLUSH
