@@ -834,8 +834,13 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
       }
     }
 
-    // Move to next character position (going up, so decrease Y)
+// Move to next character position (going up, so decrease Y)
     yPos -= glyph->advanceX;
+
+    // CUSTOM TRACKING: Reduce spacing by 1px in forced bold mode
+    if (EpdFontFamily::globalForceBold && cp != ' ' && cp != 0x00A0) {
+      yPos += 1;
+    }
   }
 }
 
@@ -1006,6 +1011,11 @@ void GfxRenderer::renderChar(const EpdFontFamily& fontFamily, const uint32_t cp,
   }
 
   *x += glyph->advanceX;
+
+  // CUSTOM TRACKING: Reduce spacing by 1px in forced bold mode
+  if (EpdFontFamily::globalForceBold && cp != ' ' && cp != 0x00A0) {
+    *x -= 1;
+  }
 }
 
 void GfxRenderer::getOrientedViewableTRBL(int* outTop, int* outRight, int* outBottom, int* outLeft) const {
