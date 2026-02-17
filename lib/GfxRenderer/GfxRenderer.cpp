@@ -834,7 +834,7 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
       }
     }
 
-// Move to next character position (going up, so decrease Y)
+    // Move to next character position (going up, so decrease Y)
     yPos -= glyph->advanceX;
 
     // CUSTOM TRACKING: Reduce spacing by 1px in forced bold mode
