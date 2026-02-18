@@ -81,6 +81,13 @@ void EpubReaderMenuActivity::loop() {
       return;
     }
 
+    if (selectedAction == MenuAction::SWAP_LANDSCAPE_CONTROLS) {
+      SETTINGS.swapLandscapeControls = (SETTINGS.swapLandscapeControls == 0) ? 1 : 0;
+      SETTINGS.saveToFile();
+      updateRequired = true;
+      return;
+    }
+
     auto actionCallback = onAction;
     actionCallback(selectedAction);
     return;
@@ -143,6 +150,12 @@ void EpubReaderMenuActivity::renderScreen() {
 
     if (menuItems[i].action == MenuAction::SWAP_CONTROLS) {
       const auto value = swapControlsLabels[SETTINGS.swapPortraitControls];
+      const auto width = renderer.getTextWidth(UI_10_FONT_ID, value);
+      renderer.drawText(UI_10_FONT_ID, contentX + contentWidth - 20 - width, displayY, value, !isSelected);
+    }
+
+    if (menuItems[i].action == MenuAction::SWAP_LANDSCAPE_CONTROLS) {
+      const auto value = swapControlsLabels[SETTINGS.swapLandscapeControls];
       const auto width = renderer.getTextWidth(UI_10_FONT_ID, value);
       renderer.drawText(UI_10_FONT_ID, contentX + contentWidth - 20 - width, displayY, value, !isSelected);
     }
