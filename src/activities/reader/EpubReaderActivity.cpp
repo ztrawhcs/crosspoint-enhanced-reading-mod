@@ -1070,14 +1070,14 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
           // Stack format boxes vertically on the right side; Dark hint bottom-right (back button).
           drawHelpBox(renderer, w - 10, h - 40, "2x: Dark", BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
           drawHelpBox(renderer, w - 10, 20,
-                      "1x: Text size –\n"
-                      "Hold: Spacing\n"
-                      "2x: Alignment",
-                      BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
-          drawHelpBox(renderer, w - 10, 110,
                       "1x: Text size +\n"
                       "Hold: Rotate\n"
                       "2x: Bold",
+                      BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
+          drawHelpBox(renderer, w - 10, 110,
+                      "1x: Text size –\n"
+                      "Hold: Spacing\n"
+                      "2x: Alignment",
                       BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
         } else {
           // CW 90: front buttons are at the bottom edge of the held device (low x in screen coords).
