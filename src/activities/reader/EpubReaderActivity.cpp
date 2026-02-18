@@ -335,7 +335,7 @@ void EpubReaderActivity::loop() {
   MappedInputManager::Button btnNavNext;
 
   const bool isLandscape = (SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CW ||
-                             SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CCW);
+                            SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CCW);
 
   if (!isLandscape) {
     // Portrait (normal or inverted)
@@ -1028,7 +1028,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
                 BoxAlign::CENTER, overlayFontId, overlayLineHeight);
 
     const bool isLandscape = (SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CW ||
-                               SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CCW);
+                              SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CCW);
 
     if (!isLandscape) {
       // Portrait help overlay
@@ -1062,20 +1062,38 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     } else {
       // Landscape help overlay
       if (SETTINGS.swapLandscapeControls == 1) {
-        // Swapped landscape: front L/R = format, side buttons = navigate
-        // Format boxes go bottom-right (where front buttons are in landscape)
-        // Dark mode hint goes bottom-left (back button)
-        drawHelpBox(renderer, 10, h - 40, "2x: Dark", BoxAlign::LEFT, overlayFontId, overlayLineHeight);
-        drawHelpBox(renderer, w - 145, h - 40,
-                    "1x: Text size –\n"
-                    "Hold: Spacing\n"
-                    "2x: Alignment",
-                    BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
-        drawHelpBox(renderer, w - 10, h - 40,
-                    "1x: Text size +\n"
-                    "Hold: Rotate\n"
-                    "2x: Bold",
-                    BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
+        // Swapped landscape: front L/R = format, side buttons = navigate.
+        // Format boxes follow the front buttons, which are physically at
+        // different screen edges depending on the rotation direction.
+        if (SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CCW) {
+          // CCW 90: front buttons are at the top edge of the held device (high x in screen coords).
+          // Format boxes go top-right; Dark hint goes bottom-right (back button).
+          drawHelpBox(renderer, w - 10, h - 40, "2x: Dark", BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
+          drawHelpBox(renderer, w / 2 + 20, 20,
+                      "1x: Text size –\n"
+                      "Hold: Spacing\n"
+                      "2x: Alignment",
+                      BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
+          drawHelpBox(renderer, w / 2 + 30, 20,
+                      "1x: Text size +\n"
+                      "Hold: Rotate\n"
+                      "2x: Bold",
+                      BoxAlign::LEFT, overlayFontId, overlayLineHeight);
+        } else {
+          // CW 90: front buttons are at the bottom edge of the held device (low x in screen coords).
+          // Format boxes go bottom-left; Dark hint goes top-left (back button).
+          drawHelpBox(renderer, 10, 20, "2x: Dark", BoxAlign::LEFT, overlayFontId, overlayLineHeight);
+          drawHelpBox(renderer, w / 2 - 30, h - 40,
+                      "1x: Text size –\n"
+                      "Hold: Spacing\n"
+                      "2x: Alignment",
+                      BoxAlign::LEFT, overlayFontId, overlayLineHeight);
+          drawHelpBox(renderer, w / 2 - 20, h - 40,
+                      "1x: Text size +\n"
+                      "Hold: Rotate\n"
+                      "2x: Bold",
+                      BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
+        }
       } else {
         // Default landscape: side buttons = format, front L/R = navigate
         drawHelpBox(renderer, w - 10, h - 40, "2x: Dark", BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
