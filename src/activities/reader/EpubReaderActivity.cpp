@@ -320,12 +320,25 @@ void EpubReaderActivity::loop() {
     }
   }
 
+  // --- BUTTON ROLE ASSIGNMENT ---
+  // Determines which physical buttons control formatting vs. page navigation,
+  // based on orientation and the user's swap preferences.
+  //
+  // Default portrait:   Left/Right = format,   PageBack/PageForward = navigate
+  // Swapped portrait:   PageBack/PageForward = format,   Left/Right = navigate
+  // Default landscape:  PageBack/PageForward = format,   Left/Right = navigate
+  // Swapped landscape:  Left/Right = format,   PageBack/PageForward = navigate
+
   MappedInputManager::Button btnFormatDec;
   MappedInputManager::Button btnFormatInc;
   MappedInputManager::Button btnNavPrev;
   MappedInputManager::Button btnNavNext;
 
-  if (SETTINGS.orientation == CrossPointSettings::ORIENTATION::PORTRAIT) {
+  const bool isLandscape = (SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CW ||
+                             SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CCW);
+
+  if (!isLandscape) {
+    // Portrait (normal or inverted)
     if (SETTINGS.swapPortraitControls == 1) {
       btnFormatDec = MappedInputManager::Button::PageBack;
       btnFormatInc = MappedInputManager::Button::PageForward;
@@ -338,10 +351,18 @@ void EpubReaderActivity::loop() {
       btnNavNext = MappedInputManager::Button::PageForward;
     }
   } else {
-    btnFormatDec = MappedInputManager::Button::PageBack;
-    btnFormatInc = MappedInputManager::Button::PageForward;
-    btnNavPrev = MappedInputManager::Button::Left;
-    btnNavNext = MappedInputManager::Button::Right;
+    // Landscape (CW or CCW)
+    if (SETTINGS.swapLandscapeControls == 1) {
+      btnFormatDec = MappedInputManager::Button::Left;
+      btnFormatInc = MappedInputManager::Button::Right;
+      btnNavPrev = MappedInputManager::Button::PageBack;
+      btnNavNext = MappedInputManager::Button::PageForward;
+    } else {
+      btnFormatDec = MappedInputManager::Button::PageBack;
+      btnFormatInc = MappedInputManager::Button::PageForward;
+      btnNavPrev = MappedInputManager::Button::Left;
+      btnNavNext = MappedInputManager::Button::Right;
+    }
   }
 
   // --- HANDLE FORMAT DEC ---
@@ -779,6 +800,12 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       pendingSubactivityExit = true;
       break;
     }
+    case EpubReaderMenuActivity::MenuAction::SWAP_LANDSCAPE_CONTROLS: {
+      SETTINGS.swapLandscapeControls = (SETTINGS.swapLandscapeControls == 0) ? 1 : 0;
+      SETTINGS.saveToFile();
+      pendingSubactivityExit = true;
+      break;
+    }
   }
 }
 
@@ -1000,8 +1027,13 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
                 "TO DISMISS",
                 BoxAlign::CENTER, overlayFontId, overlayLineHeight);
 
-    if (SETTINGS.orientation == CrossPointSettings::ORIENTATION::PORTRAIT) {
+    const bool isLandscape = (SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CW ||
+                               SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CCW);
+
+    if (!isLandscape) {
+      // Portrait help overlay
       if (SETTINGS.swapPortraitControls == 1) {
+        // Swapped portrait: side buttons = format, front L/R = navigate
         drawHelpBox(renderer, 10, h - 80, "2x: Dark", BoxAlign::LEFT, overlayFontId, overlayLineHeight);
         drawHelpBox(renderer, w - 10, h / 2 - 70,
                     "1x: Text size –\n"
@@ -1014,6 +1046,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
                     "2x: Bold",
                     BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
       } else {
+        // Default portrait: front L/R = format, side buttons = navigate
         drawHelpBox(renderer, 10, h - 80, "2x: Dark", BoxAlign::LEFT, overlayFontId, overlayLineHeight);
         drawHelpBox(renderer, w - 145, h - 80,
                     "1x: Text size –\n"
@@ -1027,17 +1060,34 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
                     BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
       }
     } else {
-      drawHelpBox(renderer, w - 10, h - 40, "2x: Dark", BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
-      drawHelpBox(renderer, w / 2 + 20, 20,
-                  "1x: Text size –\n"
-                  "Hold: Spacing\n"
-                  "2x: Alignment",
-                  BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
-      drawHelpBox(renderer, w / 2 + 30, 20,
-                  "1x: Text size +\n"
-                  "Hold: Rotate\n"
-                  "2x: Bold",
-                  BoxAlign::LEFT, overlayFontId, overlayLineHeight);
+      // Landscape help overlay
+      if (SETTINGS.swapLandscapeControls == 1) {
+        // Swapped landscape: front L/R = format, side buttons = navigate
+        drawHelpBox(renderer, w - 10, h - 40, "2x: Dark", BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
+        drawHelpBox(renderer, w - 145, h - 40,
+                    "1x: Text size –\n"
+                    "Hold: Spacing\n"
+                    "2x: Alignment",
+                    BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
+        drawHelpBox(renderer, w - 10, h - 40,
+                    "1x: Text size +\n"
+                    "Hold: Rotate\n"
+                    "2x: Bold",
+                    BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
+      } else {
+        // Default landscape: side buttons = format, front L/R = navigate
+        drawHelpBox(renderer, w - 10, h - 40, "2x: Dark", BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
+        drawHelpBox(renderer, w / 2 + 20, 20,
+                    "1x: Text size –\n"
+                    "Hold: Spacing\n"
+                    "2x: Alignment",
+                    BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
+        drawHelpBox(renderer, w / 2 + 30, 20,
+                    "1x: Text size +\n"
+                    "Hold: Rotate\n"
+                    "2x: Bold",
+                    BoxAlign::LEFT, overlayFontId, overlayLineHeight);
+      }
     }
   }
 
