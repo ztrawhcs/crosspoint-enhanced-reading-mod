@@ -67,7 +67,7 @@ class EpubReaderMenuActivity final : public ActivityWithSubactivity {
   uint8_t pendingOrientation = 0;
   const std::vector<const char*> orientationLabels = {"Portrait", "Landscape CW", "Inverted", "Landscape CCW"};
   const std::vector<const char*> buttonModLabels = {"Off", "Simple", "Full"};
-  const std::vector<const char*> swapControlsLabels = {"Bottom: Formatting", "Bottom: Page Turns"};
+  const std::vector<const char*> swapControlsLabels = {"Front: Page / Side: Format", "Front: Format / Side: Page"};
   int currentPage = 0;
   int totalPages = 0;
   int bookProgressPercent = 0;
