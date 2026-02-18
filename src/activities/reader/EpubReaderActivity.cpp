@@ -1063,7 +1063,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       // Landscape help overlay
       if (SETTINGS.swapLandscapeControls == 1) {
         // Swapped landscape: front L/R = format, side buttons = navigate
-        drawHelpBox(renderer, w - 10, h - 40, "2x: Dark", BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
+        // Format boxes go bottom-right (where front buttons are in landscape)
+        // Dark mode hint goes bottom-left (back button)
+        drawHelpBox(renderer, 10, h - 40, "2x: Dark", BoxAlign::LEFT, overlayFontId, overlayLineHeight);
         drawHelpBox(renderer, w - 145, h - 40,
                     "1x: Text size –\n"
                     "Hold: Spacing\n"
