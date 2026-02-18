@@ -1060,14 +1060,11 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
                     BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
       }
     } else {
-      // Landscape help overlay
-      if (SETTINGS.swapLandscapeControls == 1) {
-        // Swapped landscape: front L/R = format, side buttons = navigate.
-        // Format boxes follow the front buttons, which are physically at
-        // different screen edges depending on the rotation direction.
-        if (SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CCW) {
-          // CCW 90: front buttons are at the top-right of the held device.
-          // Stack format boxes vertically on the right side; Dark hint bottom-right (back button).
+      // Landscape help overlay — only render hint boxes for CCW (the primary landscape orientation).
+      // CW and other landscape orientations are skipped to avoid wrong positions.
+      if (SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CCW) {
+        if (SETTINGS.swapLandscapeControls == 1) {
+          // Swapped CCW: front buttons = format, stacked vertically on the right side.
           drawHelpBox(renderer, w - 10, h - 40, "2x: Dark", BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
           drawHelpBox(renderer, w - 10, 20,
                       "1x: Text size +\n"
@@ -1079,21 +1076,20 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
                       "Hold: Spacing\n"
                       "2x: Alignment",
                       BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
-
-      } else if (SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CCW) {
-        // Default CCW landscape: side buttons = format, front L/R = navigate
-        drawHelpBox(renderer, w - 10, h - 40, "2x: Dark", BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
-        drawHelpBox(renderer, w / 2 + 20, 20,
-                    "1x: Text size –\n"
-                    "Hold: Spacing\n"
-                    "2x: Alignment",
-                    BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
-        drawHelpBox(renderer, w / 2 + 30, 20,
-                    "1x: Text size +\n"
-                    "Hold: Rotate\n"
-                    "2x: Bold",
-                    BoxAlign::LEFT, overlayFontId, overlayLineHeight);
-        // CW and other landscape orientations: skip hint boxes, positions would be wrong.
+        } else {
+          // Default CCW: side buttons = format, top-center.
+          drawHelpBox(renderer, w - 10, h - 40, "2x: Dark", BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
+          drawHelpBox(renderer, w / 2 + 20, 20,
+                      "1x: Text size –\n"
+                      "Hold: Spacing\n"
+                      "2x: Alignment",
+                      BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
+          drawHelpBox(renderer, w / 2 + 30, 20,
+                      "1x: Text size +\n"
+                      "Hold: Rotate\n"
+                      "2x: Bold",
+                      BoxAlign::LEFT, overlayFontId, overlayLineHeight);
+        }
       }
     }
   }
