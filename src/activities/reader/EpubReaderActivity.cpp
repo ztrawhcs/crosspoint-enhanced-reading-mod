@@ -1066,19 +1066,19 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         // Format boxes follow the front buttons, which are physically at
         // different screen edges depending on the rotation direction.
         if (SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CCW) {
-          // CCW 90: front buttons are at the top edge of the held device (high x in screen coords).
-          // Format boxes go top-right; Dark hint goes bottom-right (back button).
+          // CCW 90: front buttons are at the top-right of the held device.
+          // Stack format boxes vertically on the right side; Dark hint bottom-right (back button).
           drawHelpBox(renderer, w - 10, h - 40, "2x: Dark", BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
-          drawHelpBox(renderer, w / 2 + 20, 20,
+          drawHelpBox(renderer, w - 10, 20,
                       "1x: Text size –\n"
                       "Hold: Spacing\n"
                       "2x: Alignment",
                       BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
-          drawHelpBox(renderer, w / 2 + 30, 20,
+          drawHelpBox(renderer, w - 10, 110,
                       "1x: Text size +\n"
                       "Hold: Rotate\n"
                       "2x: Bold",
-                      BoxAlign::LEFT, overlayFontId, overlayLineHeight);
+                      BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
         } else {
           // CW 90: front buttons are at the bottom edge of the held device (low x in screen coords).
           // Format boxes go bottom-left; Dark hint goes top-left (back button).
