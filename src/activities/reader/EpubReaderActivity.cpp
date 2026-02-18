@@ -262,8 +262,14 @@ void EpubReaderActivity::loop() {
   // --- CONFIRM BUTTON (MENU / HELP) ---
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     if (SETTINGS.buttonModMode == CrossPointSettings::MOD_FULL && mappedInput.getHeldTime() > formattingToggleMs) {
-      showHelpOverlay = true;
-      updateRequired = true;
+      // Only show the help overlay for orientations where we have correct hint positions.
+      // Inverted portrait and CW landscape do nothing on long-press.
+      const bool overlaySupported = (SETTINGS.orientation == CrossPointSettings::ORIENTATION::PORTRAIT ||
+                                     SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CCW);
+      if (overlaySupported) {
+        showHelpOverlay = true;
+        updateRequired = true;
+      }
       return;
     }
 
