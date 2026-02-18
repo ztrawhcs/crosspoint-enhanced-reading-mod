@@ -1079,23 +1079,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
                       "Hold: Spacing\n"
                       "2x: Alignment",
                       BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
-        } else {
-          // CW 90: front buttons are at the bottom edge of the held device (low x in screen coords).
-          // Format boxes go bottom-left; Dark hint goes top-left (back button).
-          drawHelpBox(renderer, 10, 20, "2x: Dark", BoxAlign::LEFT, overlayFontId, overlayLineHeight);
-          drawHelpBox(renderer, w / 2 - 30, h - 40,
-                      "1x: Text size –\n"
-                      "Hold: Spacing\n"
-                      "2x: Alignment",
-                      BoxAlign::LEFT, overlayFontId, overlayLineHeight);
-          drawHelpBox(renderer, w / 2 - 20, h - 40,
-                      "1x: Text size +\n"
-                      "Hold: Rotate\n"
-                      "2x: Bold",
-                      BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
-        }
-      } else {
-        // Default landscape: side buttons = format, front L/R = navigate
+
+      } else if (SETTINGS.orientation == CrossPointSettings::ORIENTATION::LANDSCAPE_CCW) {
+        // Default CCW landscape: side buttons = format, front L/R = navigate
         drawHelpBox(renderer, w - 10, h - 40, "2x: Dark", BoxAlign::RIGHT, overlayFontId, overlayLineHeight);
         drawHelpBox(renderer, w / 2 + 20, 20,
                     "1x: Text size –\n"
@@ -1107,6 +1093,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
                     "Hold: Rotate\n"
                     "2x: Bold",
                     BoxAlign::LEFT, overlayFontId, overlayLineHeight);
+        // CW and other landscape orientations: skip hint boxes, positions would be wrong.
       }
     }
   }
