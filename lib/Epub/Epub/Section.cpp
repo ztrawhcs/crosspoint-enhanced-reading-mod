@@ -8,13 +8,13 @@
 #include "parsers/ChapterHtmlSlimParser.h"
 
 namespace {
-constexpr uint8_t SECTION_FILE_VERSION = 13;
+constexpr uint8_t SECTION_FILE_VERSION = 14;
 constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) + sizeof(bool) + sizeof(uint8_t) +
                                  sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(bool) + sizeof(bool) +
-                                 sizeof(bool) + sizeof(uint32_t);
+                                 sizeof(bool) + sizeof(uint32_t) + sizeof(uint32_t);
 }  // namespace
 
-uint32_t Section::onPageComplete(std::unique_ptr<Page> page) {
+uint32_t Section::onPageComplete(std::unique_ptr<Page> page, uint32_t charOffset) {
   if (!file) {
     Serial.printf("[%lu] [SCT] File not open for writing page %d\n", millis(), pageCount);
     return 0;
@@ -42,7 +42,7 @@ void Section::writeSectionFileHeader(const int fontId, const float lineCompressi
   static_assert(HEADER_SIZE == sizeof(SECTION_FILE_VERSION) + sizeof(fontId) + sizeof(lineCompression) +
                                    sizeof(extraParagraphSpacing) + sizeof(paragraphAlignment) + sizeof(viewportWidth) +
                                    sizeof(viewportHeight) + sizeof(pageCount) + sizeof(hyphenationEnabled) +
-                                   sizeof(embeddedStyle) + sizeof(forceBold) + sizeof(uint32_t),
+                                   sizeof(embeddedStyle) + sizeof(forceBold) + sizeof(uint32_t) + sizeof(uint32_t),
                 "Header size mismatch");
   serialization::writePod(file, SECTION_FILE_VERSION);
   serialization::writePod(file, fontId);
@@ -55,7 +55,8 @@ void Section::writeSectionFileHeader(const int fontId, const float lineCompressi
   serialization::writePod(file, embeddedStyle);
   serialization::writePod(file, forceBold);
   serialization::writePod(file, pageCount);
-  serialization::writePod(file, static_cast<uint32_t>(0));
+  serialization::writePod(file, static_cast<uint32_t>(0));  // lutOffset placeholder
+  serialization::writePod(file, static_cast<uint32_t>(0));  // charLutOffset placeholder
 }
 
 bool Section::loadSectionFile(const int fontId, const float lineCompression, const bool extraParagraphSpacing,
@@ -181,11 +182,15 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
                          viewportHeight, hyphenationEnabled, embeddedStyle, forceBold);
 
   std::vector<uint32_t> lut = {};
+  std::vector<uint32_t> charOffsetLut = {};
 
   ChapterHtmlSlimParser visitor(
       tmpHtmlPath, renderer, fontId, lineCompression, extraParagraphSpacing, paragraphAlignment, viewportWidth,
       viewportHeight, hyphenationEnabled,
-      [this, &lut](std::unique_ptr<Page> page) { lut.emplace_back(this->onPageComplete(std::move(page))); },
+      [this, &lut, &charOffsetLut](std::unique_ptr<Page> page, uint32_t charOffset) {
+        lut.emplace_back(this->onPageComplete(std::move(page), charOffset));
+        charOffsetLut.emplace_back(charOffset);
+      },
       embeddedStyle, popupFn, embeddedStyle ? epub->getCssParser() : nullptr);
 
   Hyphenator::setPreferredLanguage(epub->getLanguage());
@@ -217,9 +222,16 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
     return false;
   }
 
-  file.seek(HEADER_SIZE - sizeof(uint32_t) - sizeof(pageCount));
+  const uint32_t charLutOffset = file.position();
+  for (const uint32_t& charOffset : charOffsetLut) {
+    serialization::writePod(file, charOffset);
+  }
+
+  // Patch pageCount, lutOffset, and charLutOffset back into header
+  file.seek(HEADER_SIZE - sizeof(uint32_t) - sizeof(uint32_t) - sizeof(pageCount));
   serialization::writePod(file, pageCount);
   serialization::writePod(file, lutOffset);
+  serialization::writePod(file, charLutOffset);
   file.close();
   return true;
 }
@@ -229,9 +241,10 @@ std::unique_ptr<Page> Section::loadPageFromSectionFile() {
     return nullptr;
   }
 
-  file.seek(HEADER_SIZE - sizeof(uint32_t));
+  file.seek(HEADER_SIZE - sizeof(uint32_t) - sizeof(uint32_t));
   uint32_t lutOffset;
   serialization::readPod(file, lutOffset);
+  // skip charLutOffset - not needed for normal page loading
   file.seek(lutOffset + sizeof(uint32_t) * currentPage);
   uint32_t pagePos;
   serialization::readPod(file, pagePos);
@@ -240,4 +253,47 @@ std::unique_ptr<Page> Section::loadPageFromSectionFile() {
   auto page = Page::deserialize(file);
   file.close();
   return page;
+}
+
+uint32_t Section::getCharOffsetForPage(const int page) const {
+  FsFile f;
+  if (!Storage.openFileForRead("SCT", filePath, f)) return 0;
+
+  f.seek(HEADER_SIZE - sizeof(uint32_t));
+  uint32_t charLutOffset;
+  serialization::readPod(f, charLutOffset);
+  f.seek(charLutOffset + sizeof(uint32_t) * page);
+  uint32_t charOffset;
+  serialization::readPod(f, charOffset);
+  f.close();
+  return charOffset;
+}
+
+int Section::findPageForCharOffset(const uint32_t charOffset) const {
+  FsFile f;
+  if (!Storage.openFileForRead("SCT", filePath, f)) return 0;
+
+  f.seek(HEADER_SIZE - sizeof(uint32_t) - sizeof(uint32_t) - sizeof(pageCount));
+  uint16_t count;
+  serialization::readPod(f, count);
+  uint32_t lutOffset;
+  serialization::readPod(f, lutOffset);  // skip regular lutOffset
+  uint32_t charLutOffset;
+  serialization::readPod(f, charLutOffset);
+
+  // Find the last page whose charOffset <= target (i.e. the page that starts at or before the target)
+  int result = 0;
+  for (uint16_t p = 0; p < count; p++) {
+    f.seek(charLutOffset + sizeof(uint32_t) * p);
+    uint32_t offset;
+    serialization::readPod(f, offset);
+    if (offset <= charOffset) {
+      result = p;
+    } else {
+      break;
+    }
+  }
+  f.close();
+  Serial.printf("[ERS] findPageForCharOffset(%u) -> page %d\n", charOffset, result);
+  return result;
 }
