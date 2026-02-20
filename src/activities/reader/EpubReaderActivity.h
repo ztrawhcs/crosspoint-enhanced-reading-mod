@@ -20,6 +20,7 @@ class EpubReaderActivity final : public ActivityWithSubactivity {
   int cachedChapterTotalPageCount = 0;
   size_t totalBookBytes = 0;
   std::string anchorWord;
+  float lastBookProgress = 0.0f;  // last known book progress (0-100), updated each render
   // Signals that the next render should reposition within the newly loaded section
   // based on a cross-book percentage jump.
   bool pendingPercentJump = false;

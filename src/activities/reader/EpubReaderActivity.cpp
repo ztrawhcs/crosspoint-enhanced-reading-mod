@@ -472,14 +472,38 @@ void EpubReaderActivity::loop() {
       limitReached = true;
     }
     if (changed) {
-      if (section) {
-        anchorWord = captureAnchorWord();
-        cachedSpineIndex = currentSpineIndex;
-        cachedChapterTotalPageCount = section->pageCount;
-        nextPageNumber = section->currentPage;
+      if (section && epub && epub->getBookSize() > 0) {
+        const float chapterProgress =
+            static_cast<float>(section->currentPage) / static_cast<float>(section->pageCount);
+        const float progress = epub->calculateProgress(currentSpineIndex, chapterProgress);
+        const int targetPercent = clampPercent(static_cast<int>(progress * 100.0f + 0.5f));
+        const size_t bookSize = epub->getBookSize();
+        const size_t targetSize = (bookSize / 100) * static_cast<size_t>(targetPercent) +
+                                  (bookSize % 100) * static_cast<size_t>(targetPercent) / 100;
+        const int spineCount = epub->getSpineItemsCount();
+        int targetSpineIndex = spineCount - 1;
+        size_t prevCumulative = 0;
+        for (int i = 0; i < spineCount; i++) {
+          const size_t cumulative = epub->getCumulativeSpineItemSize(i);
+          if (targetSize <= cumulative) {
+            targetSpineIndex = i;
+            prevCumulative = (i > 0) ? epub->getCumulativeSpineItemSize(i - 1) : 0;
+            break;
+          }
+        }
+        const size_t cumulative = epub->getCumulativeSpineItemSize(targetSpineIndex);
+        const size_t spineSize = (cumulative > prevCumulative) ? (cumulative - prevCumulative) : 0;
+        pendingSpineProgress =
+            (spineSize == 0) ? 0.0f
+                             : static_cast<float>(targetSize - prevCumulative) / static_cast<float>(spineSize);
+        pendingSpineProgress = std::max(0.0f, std::min(1.0f, pendingSpineProgress));
+        currentSpineIndex = targetSpineIndex;
+        nextPageNumber = 0;
+        pendingPercentJump = true;
       }
       SETTINGS.saveToFile();
       section.reset();
+      anchorWord.clear();
     }
     xSemaphoreGive(renderingMutex);
     if (changed) {
@@ -566,14 +590,38 @@ void EpubReaderActivity::loop() {
       limitReached = true;
     }
     if (changed) {
-      if (section) {
-        anchorWord = captureAnchorWord();
-        cachedSpineIndex = currentSpineIndex;
-        cachedChapterTotalPageCount = section->pageCount;
-        nextPageNumber = section->currentPage;
+      if (section && epub && epub->getBookSize() > 0) {
+        const float chapterProgress =
+            static_cast<float>(section->currentPage) / static_cast<float>(section->pageCount);
+        const float progress = epub->calculateProgress(currentSpineIndex, chapterProgress);
+        const int targetPercent = clampPercent(static_cast<int>(progress * 100.0f + 0.5f));
+        const size_t bookSize = epub->getBookSize();
+        const size_t targetSize = (bookSize / 100) * static_cast<size_t>(targetPercent) +
+                                  (bookSize % 100) * static_cast<size_t>(targetPercent) / 100;
+        const int spineCount = epub->getSpineItemsCount();
+        int targetSpineIndex = spineCount - 1;
+        size_t prevCumulative = 0;
+        for (int i = 0; i < spineCount; i++) {
+          const size_t cumulative = epub->getCumulativeSpineItemSize(i);
+          if (targetSize <= cumulative) {
+            targetSpineIndex = i;
+            prevCumulative = (i > 0) ? epub->getCumulativeSpineItemSize(i - 1) : 0;
+            break;
+          }
+        }
+        const size_t cumulative = epub->getCumulativeSpineItemSize(targetSpineIndex);
+        const size_t spineSize = (cumulative > prevCumulative) ? (cumulative - prevCumulative) : 0;
+        pendingSpineProgress =
+            (spineSize == 0) ? 0.0f
+                             : static_cast<float>(targetSize - prevCumulative) / static_cast<float>(spineSize);
+        pendingSpineProgress = std::max(0.0f, std::min(1.0f, pendingSpineProgress));
+        currentSpineIndex = targetSpineIndex;
+        nextPageNumber = 0;
+        pendingPercentJump = true;
       }
       SETTINGS.saveToFile();
       section.reset();
+      anchorWord.clear();
     }
     xSemaphoreGive(renderingMutex);
     if (changed) {
@@ -1347,6 +1395,7 @@ void EpubReaderActivity::renderStatusBar(const int orientedMarginRight, const in
 
   const float sectionChapterProg = static_cast<float>(section->currentPage) / section->pageCount;
   const float bookProgress = epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100;
+  lastBookProgress = bookProgress;
 
   if (showProgressText || showProgressPercentage || showBookPercentage) {
     char progressStr[32];
