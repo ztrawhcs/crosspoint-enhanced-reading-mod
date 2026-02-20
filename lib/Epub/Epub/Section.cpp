@@ -227,7 +227,6 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
     serialization::writePod(file, charOffset);
   }
 
-  // Patch pageCount, lutOffset, and charLutOffset back into header
   file.seek(HEADER_SIZE - sizeof(uint32_t) - sizeof(uint32_t) - sizeof(pageCount));
   serialization::writePod(file, pageCount);
   serialization::writePod(file, lutOffset);
@@ -281,14 +280,14 @@ int Section::findPageForCharOffset(const uint32_t charOffset) const {
   uint32_t charLutOffset;
   serialization::readPod(f, charLutOffset);
 
-  // Find the last page whose charOffset <= target (i.e. the page that starts at or before the target)
+  // Find the last page whose charOffset <= target
   int result = 0;
   for (uint16_t p = 0; p < count; p++) {
     f.seek(charLutOffset + sizeof(uint32_t) * p);
     uint32_t offset;
     serialization::readPod(f, offset);
     if (offset <= charOffset) {
-      result = p;
+      result = static_cast<int>(p);
     } else {
       break;
     }
