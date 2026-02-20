@@ -34,7 +34,8 @@ class ChapterHtmlSlimParser {
   std::unique_ptr<ParsedText> currentTextBlock = nullptr;
   std::unique_ptr<Page> currentPage = nullptr;
   int16_t currentPageNextY = 0;
-  XML_Parser parser = nullptr;  // stored so addLineToPage can call XML_GetCurrentByteIndex
+  uint32_t processedByteCount = 0;   // cumulative bytes of text content seen so far
+  uint32_t currentPageStartByte = 0; // processedByteCount value at the start of the current page
   int fontId;
   float lineCompression;
   bool extraParagraphSpacing;
