@@ -19,7 +19,7 @@ class GfxRenderer;
 class ChapterHtmlSlimParser {
   const std::string& filepath;
   GfxRenderer& renderer;
-  std::function<void(std::unique_ptr<Page>)> completePageFn;
+  std::function<void(std::unique_ptr<Page>, uint32_t)> completePageFn;
   std::function<void()> popupFn;  // Popup callback
   int depth = 0;
   int skipUntilDepth = INT_MAX;
@@ -34,6 +34,7 @@ class ChapterHtmlSlimParser {
   std::unique_ptr<ParsedText> currentTextBlock = nullptr;
   std::unique_ptr<Page> currentPage = nullptr;
   int16_t currentPageNextY = 0;
+  XML_Parser parser = nullptr;  // stored so addLineToPage can call XML_GetCurrentByteIndex
   int fontId;
   float lineCompression;
   bool extraParagraphSpacing;
@@ -71,7 +72,7 @@ class ChapterHtmlSlimParser {
                                  const float lineCompression, const bool extraParagraphSpacing,
                                  const uint8_t paragraphAlignment, const uint16_t viewportWidth,
                                  const uint16_t viewportHeight, const bool hyphenationEnabled,
-                                 const std::function<void(std::unique_ptr<Page>)>& completePageFn,
+                                 const std::function<void(std::unique_ptr<Page>, uint32_t)>& completePageFn,
                                  const bool embeddedStyle, const std::function<void()>& popupFn = nullptr,
                                  const CssParser* cssParser = nullptr)
 

@@ -353,7 +353,7 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
       if (self->partWordBufferIndex > 0) {
         self->flushPartWordBuffer();
       }
-      // Whitespace is a real word boundary — reset continuation state
+      // Whitespace is a real word boundary - reset continuation state
       self->nextWordContinues = false;
       // Skip the whitespace char
       continue;
@@ -474,6 +474,7 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
   startNewTextBlock(paragraphAlignmentBlockStyle);
 
   const XML_Parser parser = XML_ParserCreate(nullptr);
+  this->parser = parser;
   int done;
 
   if (!parser) {
@@ -538,12 +539,13 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
   XML_SetElementHandler(parser, nullptr, nullptr);  // Clear callbacks
   XML_SetCharacterDataHandler(parser, nullptr);
   XML_ParserFree(parser);
+  this->parser = nullptr;
   file.close();
 
   // Process last page if there is still text
   if (currentTextBlock) {
     makePages();
-    completePageFn(std::move(currentPage));
+    completePageFn(std::move(currentPage), 0);  // 0 = no next page offset for last page
     currentPage.reset();
     currentTextBlock.reset();
   }
@@ -555,7 +557,8 @@ void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line) {
   const int lineHeight = renderer.getLineHeight(fontId) * lineCompression;
 
   if (currentPageNextY + lineHeight > viewportHeight) {
-    completePageFn(std::move(currentPage));
+    const uint32_t charOffset = parser ? static_cast<uint32_t>(XML_GetCurrentByteIndex(parser)) : 0;
+    completePageFn(std::move(currentPage), charOffset);
     currentPage.reset(new Page());
     currentPageNextY = 0;
   }
