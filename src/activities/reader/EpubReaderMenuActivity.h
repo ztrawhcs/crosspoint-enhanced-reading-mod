@@ -27,7 +27,8 @@ class EpubReaderMenuActivity final : public ActivityWithSubactivity {
 
   explicit EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title,
                                   const int currentPage, const int totalPages, const int bookProgressPercent,
-                                  const size_t totalBookBytes, const uint8_t currentOrientation,
+                                  const float bookProgressExact, const size_t totalBookBytes,
+                                  const uint8_t currentOrientation,
                                   const std::function<void(uint8_t)>& onBack,
                                   const std::function<void(MenuAction)>& onAction)
       : ActivityWithSubactivity("EpubReaderMenu", renderer, mappedInput),
@@ -36,6 +37,7 @@ class EpubReaderMenuActivity final : public ActivityWithSubactivity {
         currentPage(currentPage),
         totalPages(totalPages),
         bookProgressPercent(bookProgressPercent),
+        bookProgressExact(bookProgressExact),
         totalBookBytes(totalBookBytes),
         onBack(onBack),
         onAction(onAction) {}
@@ -73,6 +75,7 @@ class EpubReaderMenuActivity final : public ActivityWithSubactivity {
   int currentPage = 0;
   int totalPages = 0;
   int bookProgressPercent = 0;
+  float bookProgressExact = 0.0f;
   size_t totalBookBytes = 0;
 
   const std::function<void(uint8_t)> onBack;

@@ -307,7 +307,8 @@ void EpubReaderActivity::loop() {
     exitActivity();
     enterNewActivity(new EpubReaderMenuActivity(
         this->renderer, this->mappedInput, epub->getTitle(), currentPage, totalPages, bookProgressPercent,
-        totalBookBytes, SETTINGS.orientation, [this](const uint8_t orientation) { onReaderMenuBack(orientation); },
+        bookProgress, totalBookBytes, SETTINGS.orientation,
+        [this](const uint8_t orientation) { onReaderMenuBack(orientation); },
         [this](EpubReaderMenuActivity::MenuAction action) { onReaderMenuConfirm(action); }));
     xSemaphoreGive(renderingMutex);
   }

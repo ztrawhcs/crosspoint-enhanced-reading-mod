@@ -123,16 +123,16 @@ void EpubReaderMenuActivity::renderScreen() {
   progressLine += "Book: " + std::to_string(bookProgressPercent) + "%";
   renderer.drawCenteredText(UI_10_FONT_ID, 45, progressLine.c_str());
 
-  if (totalBookBytes > 0 && bookProgressPercent > 0) {
-    constexpr int BYTES_PER_PAGE = 2000;
+  if (totalBookBytes > 0 && bookProgressExact > 0.0f) {
+    constexpr int BYTES_PER_PAGE = 2900;
     const int estimatedTotal = static_cast<int>(totalBookBytes / BYTES_PER_PAGE);
-    const int estimatedRead = static_cast<int>(estimatedTotal * (bookProgressPercent / 100.0f) + 0.5f);
+    const int estimatedRead = static_cast<int>(estimatedTotal * (bookProgressExact / 100.0f) + 0.5f);
     const std::string pagesLine =
-        "~" + std::to_string(estimatedRead) + " / ~" + std::to_string(estimatedTotal) + " pages";
-    renderer.drawCenteredText(UI_10_FONT_ID, 62, pagesLine.c_str());
+        "Pages: ~" + std::to_string(estimatedRead) + " of ~" + std::to_string(estimatedTotal);
+    renderer.drawCenteredText(UI_10_FONT_ID, 75, pagesLine.c_str());
   }
 
-  const int startY = 105 + contentY;
+  const int startY = 115 + contentY;
   constexpr int lineHeight = 30;
 
   for (size_t i = 0; i < menuItems.size(); ++i) {
