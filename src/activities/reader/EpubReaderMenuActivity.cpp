@@ -124,7 +124,7 @@ void EpubReaderMenuActivity::renderScreen() {
   renderer.drawCenteredText(UI_10_FONT_ID, 45, progressLine.c_str());
 
   if (totalBookBytes > 0 && bookProgressExact > 0.0f) {
-    constexpr int BYTES_PER_PAGE = 2950;
+    constexpr int BYTES_PER_PAGE = 2675;
     const int estimatedTotal = static_cast<int>(totalBookBytes / BYTES_PER_PAGE);
     const int estimatedRead = static_cast<int>(estimatedTotal * (bookProgressExact / 100.0f) + 0.5f);
     const std::string pagesLine =

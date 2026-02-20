@@ -306,9 +306,8 @@ void EpubReaderActivity::loop() {
     const int bookProgressPercent = clampPercent(static_cast<int>(bookProgress + 0.5f));
     exitActivity();
     enterNewActivity(new EpubReaderMenuActivity(
-        this->renderer, this->mappedInput, epub->getTitle(), currentPage, totalPages, bookProgressPercent,
-        bookProgress, totalBookBytes, SETTINGS.orientation,
-        [this](const uint8_t orientation) { onReaderMenuBack(orientation); },
+        this->renderer, this->mappedInput, epub->getTitle(), currentPage, totalPages, bookProgressPercent, bookProgress,
+        totalBookBytes, SETTINGS.orientation, [this](const uint8_t orientation) { onReaderMenuBack(orientation); },
         [this](EpubReaderMenuActivity::MenuAction action) { onReaderMenuConfirm(action); }));
     xSemaphoreGive(renderingMutex);
   }
@@ -1057,7 +1056,10 @@ std::string EpubReaderActivity::captureAnchorWord() const {
     lutOffset = buf[2] | (buf[3] << 8) | (buf[4] << 16) | (buf[5] << 24);
   }
 
-  if (section->currentPage >= pageCount) { f.close(); return ""; }
+  if (section->currentPage >= pageCount) {
+    f.close();
+    return "";
+  }
 
   // Seek to the LUT entry for currentPage
   f.seek(lutOffset + sizeof(uint32_t) * section->currentPage);
@@ -1078,7 +1080,10 @@ std::string EpubReaderActivity::captureAnchorWord() const {
     f.read(buf, 2);
     elementCount = buf[0] | (buf[1] << 8);
   }
-  if (elementCount == 0) { f.close(); return ""; }
+  if (elementCount == 0) {
+    f.close();
+    return "";
+  }
 
   // Skip tag(1) + xPos(2) + yPos(2) = 5 bytes
   f.seek(f.position() + 5);
@@ -1090,7 +1095,10 @@ std::string EpubReaderActivity::captureAnchorWord() const {
     f.read(buf, 2);
     wordCount = buf[0] | (buf[1] << 8);
   }
-  if (wordCount == 0) { f.close(); return ""; }
+  if (wordCount == 0) {
+    f.close();
+    return "";
+  }
 
   // Read first word (length-prefixed string from Serialization - uint32_t length)
   uint32_t wordLen;
@@ -1099,7 +1107,10 @@ std::string EpubReaderActivity::captureAnchorWord() const {
     f.read(buf, 4);
     wordLen = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
   }
-  if (wordLen == 0 || wordLen > 200) { f.close(); return ""; }
+  if (wordLen == 0 || wordLen > 200) {
+    f.close();
+    return "";
+  }
 
   std::vector<uint8_t> wordBuf(wordLen);
   f.read(wordBuf.data(), wordLen);
@@ -1168,7 +1179,16 @@ int EpubReaderActivity::findPageForAnchorWord(const std::string& anchorWord) con
     f.read(candidateBuf.data(), wordLen);
     std::string candidate(candidateBuf.begin(), candidateBuf.end());
 
-    if (candidate == anchorWord) {
+    // Strip leading/trailing ASCII punctuation before comparing
+    const auto stripPunct = [](const std::string& s) {
+      size_t start = 0;
+      size_t end = s.size();
+      while (start < end && ispunct(static_cast<unsigned char>(s[start]))) start++;
+      while (end > start && ispunct(static_cast<unsigned char>(s[end - 1]))) end--;
+      return s.substr(start, end - start);
+    };
+
+    if (stripPunct(candidate) == stripPunct(anchorWord)) {
       f.close();
       Serial.printf("[ERS] Found anchor word on page %d\n", p);
       return p;
