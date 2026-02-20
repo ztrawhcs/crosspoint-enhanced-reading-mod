@@ -19,7 +19,7 @@ class EpubReaderActivity final : public ActivityWithSubactivity {
   int cachedSpineIndex = 0;
   int cachedChapterTotalPageCount = 0;
   size_t totalBookBytes = 0;
-  uint32_t charAnchor = 0;    // HTML byte offset captured before font size change
+  uint32_t charAnchor = 0;     // HTML byte offset captured before font size change
   bool hasCharAnchor = false;  // true when charAnchor is valid
   // Signals that the next render should reposition within the newly loaded section
   // based on a cross-book percentage jump.
