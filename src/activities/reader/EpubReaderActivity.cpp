@@ -472,38 +472,15 @@ void EpubReaderActivity::loop() {
       limitReached = true;
     }
     if (changed) {
-      if (section && epub && epub->getBookSize() > 0) {
-        const float chapterProgress =
-            static_cast<float>(section->currentPage) / static_cast<float>(section->pageCount);
-        const float progress = epub->calculateProgress(currentSpineIndex, chapterProgress);
-        const int targetPercent = clampPercent(static_cast<int>(progress * 100.0f + 0.5f));
-        const size_t bookSize = epub->getBookSize();
-        const size_t targetSize = (bookSize / 100) * static_cast<size_t>(targetPercent) +
-                                  (bookSize % 100) * static_cast<size_t>(targetPercent) / 100;
-        const int spineCount = epub->getSpineItemsCount();
-        int targetSpineIndex = spineCount - 1;
-        size_t prevCumulative = 0;
-        for (int i = 0; i < spineCount; i++) {
-          const size_t cumulative = epub->getCumulativeSpineItemSize(i);
-          if (targetSize <= cumulative) {
-            targetSpineIndex = i;
-            prevCumulative = (i > 0) ? epub->getCumulativeSpineItemSize(i - 1) : 0;
-            break;
-          }
-        }
-        const size_t cumulative = epub->getCumulativeSpineItemSize(targetSpineIndex);
-        const size_t spineSize = (cumulative > prevCumulative) ? (cumulative - prevCumulative) : 0;
-        pendingSpineProgress =
-            (spineSize == 0) ? 0.0f
-                             : static_cast<float>(targetSize - prevCumulative) / static_cast<float>(spineSize);
-        pendingSpineProgress = std::max(0.0f, std::min(1.0f, pendingSpineProgress));
-        currentSpineIndex = targetSpineIndex;
-        nextPageNumber = 0;
-        pendingPercentJump = true;
+      if (section) {
+        charAnchor = section->getCharOffsetForPage(section->currentPage);
+        hasCharAnchor = true;
+        cachedSpineIndex = currentSpineIndex;
+        cachedChapterTotalPageCount = section->pageCount;
+        nextPageNumber = section->currentPage;
       }
       SETTINGS.saveToFile();
       section.reset();
-      anchorWord.clear();
     }
     xSemaphoreGive(renderingMutex);
     if (changed) {
@@ -590,38 +567,15 @@ void EpubReaderActivity::loop() {
       limitReached = true;
     }
     if (changed) {
-      if (section && epub && epub->getBookSize() > 0) {
-        const float chapterProgress =
-            static_cast<float>(section->currentPage) / static_cast<float>(section->pageCount);
-        const float progress = epub->calculateProgress(currentSpineIndex, chapterProgress);
-        const int targetPercent = clampPercent(static_cast<int>(progress * 100.0f + 0.5f));
-        const size_t bookSize = epub->getBookSize();
-        const size_t targetSize = (bookSize / 100) * static_cast<size_t>(targetPercent) +
-                                  (bookSize % 100) * static_cast<size_t>(targetPercent) / 100;
-        const int spineCount = epub->getSpineItemsCount();
-        int targetSpineIndex = spineCount - 1;
-        size_t prevCumulative = 0;
-        for (int i = 0; i < spineCount; i++) {
-          const size_t cumulative = epub->getCumulativeSpineItemSize(i);
-          if (targetSize <= cumulative) {
-            targetSpineIndex = i;
-            prevCumulative = (i > 0) ? epub->getCumulativeSpineItemSize(i - 1) : 0;
-            break;
-          }
-        }
-        const size_t cumulative = epub->getCumulativeSpineItemSize(targetSpineIndex);
-        const size_t spineSize = (cumulative > prevCumulative) ? (cumulative - prevCumulative) : 0;
-        pendingSpineProgress =
-            (spineSize == 0) ? 0.0f
-                             : static_cast<float>(targetSize - prevCumulative) / static_cast<float>(spineSize);
-        pendingSpineProgress = std::max(0.0f, std::min(1.0f, pendingSpineProgress));
-        currentSpineIndex = targetSpineIndex;
-        nextPageNumber = 0;
-        pendingPercentJump = true;
+      if (section) {
+        charAnchor = section->getCharOffsetForPage(section->currentPage);
+        hasCharAnchor = true;
+        cachedSpineIndex = currentSpineIndex;
+        cachedChapterTotalPageCount = section->pageCount;
+        nextPageNumber = section->currentPage;
       }
       SETTINGS.saveToFile();
       section.reset();
-      anchorWord.clear();
     }
     xSemaphoreGive(renderingMutex);
     if (changed) {
@@ -1003,15 +957,10 @@ void EpubReaderActivity::renderScreen() {
 
     if (cachedChapterTotalPageCount > 0) {
       if (currentSpineIndex == cachedSpineIndex && section->pageCount != cachedChapterTotalPageCount) {
-        if (!anchorWord.empty()) {
-          const int foundPage = findPageForAnchorWord(anchorWord);
-          if (foundPage >= 0) {
-            section->currentPage = foundPage;
-          } else {
-            float progress = static_cast<float>(section->currentPage) / static_cast<float>(cachedChapterTotalPageCount);
-            section->currentPage = static_cast<int>(progress * section->pageCount);
-          }
-          anchorWord.clear();
+        if (hasCharAnchor) {
+          section->currentPage = section->findPageForCharOffset(charAnchor);
+          hasCharAnchor = false;
+          charAnchor = 0;
         } else {
           float progress = static_cast<float>(section->currentPage) / static_cast<float>(cachedChapterTotalPageCount);
           section->currentPage = static_cast<int>(progress * section->pageCount);
@@ -1079,153 +1028,6 @@ void EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageC
   } else {
     Serial.printf("[ERS] Could not save progress!\n");
   }
-}
-
-// Reads the next length-prefixed string from an open FsFile.
-// Returns empty string on failure or if length is out of bounds.
-static std::string readNextWord(FsFile& f) {
-  uint32_t len;
-  {
-    uint8_t buf[4];
-    if (f.read(buf, 4) != 4) return "";
-    len = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
-  }
-  if (len == 0 || len > 200) return "";
-  std::vector<uint8_t> buf(len);
-  if (f.read(buf.data(), len) != (int)len) return "";
-  return std::string(buf.begin(), buf.end());
-}
-
-// Strips leading/trailing ASCII punctuation from a word for comparison.
-static std::string stripPunct(const std::string& s) {
-  size_t start = 0;
-  size_t end = s.size();
-  while (start < end && ispunct(static_cast<unsigned char>(s[start]))) start++;
-  while (end > start && ispunct(static_cast<unsigned char>(s[end - 1]))) end--;
-  return s.substr(start, end - start);
-}
-
-// Reads all words from the first PageLine of a page as a fingerprint phrase.
-// This gives a full line of text (10-20 words) which is essentially unique in any book.
-static std::string readAnchorPhrase(FsFile& f) {
-  uint16_t elementCount;
-  {
-    uint8_t buf[2];
-    if (f.read(buf, 2) != 2) return "";
-    elementCount = buf[0] | (buf[1] << 8);
-  }
-  if (elementCount == 0) return "";
-
-  // Skip tag(1) + xPos(2) + yPos(2) = 5 bytes
-  f.seek(f.position() + 5);
-
-  uint16_t wordCount;
-  {
-    uint8_t buf[2];
-    if (f.read(buf, 2) != 2) return "";
-    wordCount = buf[0] | (buf[1] << 8);
-  }
-  if (wordCount == 0) return "";
-
-  // Read ALL words from the first line
-  std::vector<std::string> collected;
-  for (uint16_t w = 0; w < wordCount; w++) {
-    std::string wrd = readNextWord(f);
-    if (wrd.empty()) break;
-    std::string stripped = stripPunct(wrd);
-    if (!stripped.empty()) collected.push_back(stripped);
-  }
-
-  if (collected.empty()) return "";
-
-  std::string phrase;
-  for (size_t i = 0; i < collected.size(); i++) {
-    if (i > 0) phrase += " ";
-    phrase += collected[i];
-  }
-  return phrase;
-}
-
-std::string EpubReaderActivity::captureAnchorWord() const {
-  if (!section || !epub) return "";
-  const std::string filePath = epub->getCachePath() + "/sections/" + std::to_string(currentSpineIndex) + ".bin";
-  FsFile f;
-  if (!Storage.openFileForRead("ERS", filePath, f)) return "";
-
-  constexpr uint32_t PAGE_COUNT_OFFSET = 18;
-  f.seek(PAGE_COUNT_OFFSET);
-  uint16_t pageCount;
-  uint32_t lutOffset;
-  {
-    uint8_t buf[6];
-    f.read(buf, 6);
-    pageCount = buf[0] | (buf[1] << 8);
-    lutOffset = buf[2] | (buf[3] << 8) | (buf[4] << 16) | (buf[5] << 24);
-  }
-
-  if (section->currentPage >= pageCount) {
-    f.close();
-    return "";
-  }
-
-  f.seek(lutOffset + sizeof(uint32_t) * section->currentPage);
-  uint32_t pagePos;
-  {
-    uint8_t buf[4];
-    f.read(buf, 4);
-    pagePos = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
-  }
-
-  f.seek(pagePos);
-  std::string phrase = readAnchorPhrase(f);
-  f.close();
-
-  if (phrase.empty()) {
-    Serial.printf("[ERS] captureAnchorWord: failed to read phrase\n");
-  } else {
-    Serial.printf("[ERS] Captured anchor phrase: %s\n", phrase.c_str());
-  }
-  return phrase;
-}
-
-int EpubReaderActivity::findPageForAnchorWord(const std::string& anchorWord) const {
-  if (!section || !epub || anchorWord.empty()) return -1;
-  const std::string filePath = epub->getCachePath() + "/sections/" + std::to_string(currentSpineIndex) + ".bin";
-  FsFile f;
-  if (!Storage.openFileForRead("ERS", filePath, f)) return -1;
-
-  constexpr uint32_t PAGE_COUNT_OFFSET = 18;
-  f.seek(PAGE_COUNT_OFFSET);
-  uint16_t pageCount;
-  uint32_t lutOffset;
-  {
-    uint8_t buf[6];
-    f.read(buf, 6);
-    pageCount = buf[0] | (buf[1] << 8);
-    lutOffset = buf[2] | (buf[3] << 8) | (buf[4] << 16) | (buf[5] << 24);
-  }
-
-  for (uint16_t p = 0; p < pageCount; p++) {
-    f.seek(lutOffset + sizeof(uint32_t) * p);
-    uint32_t pagePos;
-    {
-      uint8_t buf[4];
-      f.read(buf, 4);
-      pagePos = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
-    }
-
-    f.seek(pagePos);
-    std::string phrase = readAnchorPhrase(f);
-    if (phrase == anchorWord) {
-      f.close();
-      Serial.printf("[ERS] Found anchor phrase on page %d\n", p);
-      return p;
-    }
-  }
-
-  f.close();
-  Serial.printf("[ERS] Anchor phrase not found, falling back to ratio\n");
-  return -1;
 }
 
 void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
@@ -1395,7 +1197,6 @@ void EpubReaderActivity::renderStatusBar(const int orientedMarginRight, const in
 
   const float sectionChapterProg = static_cast<float>(section->currentPage) / section->pageCount;
   const float bookProgress = epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100;
-  lastBookProgress = bookProgress;
 
   if (showProgressText || showProgressPercentage || showBookPercentage) {
     char progressStr[32];
