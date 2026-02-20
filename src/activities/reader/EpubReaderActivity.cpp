@@ -1101,9 +1101,10 @@ std::string EpubReaderActivity::captureAnchorWord() const {
   }
   if (wordLen == 0 || wordLen > 200) { f.close(); return ""; }
 
-  std::string word(wordLen, '\0');
-  f.read(&word[0], wordLen);
+  std::vector<uint8_t> wordBuf(wordLen);
+  f.read(wordBuf.data(), wordLen);
   f.close();
+  std::string word(wordBuf.begin(), wordBuf.end());
 
   Serial.printf("[ERS] Captured anchor word: %s\n", word.c_str());
   return word;
@@ -1163,8 +1164,9 @@ int EpubReaderActivity::findPageForAnchorWord(const std::string& word) const {
     }
     if (wordLen == 0 || wordLen > 200) continue;
 
-    std::string candidate(wordLen, '\0');
-    f.read(&candidate[0], wordLen);
+    std::vector<uint8_t> candidateBuf(wordLen);
+    f.read(candidateBuf.data(), wordLen);
+    std::string candidate(candidateBuf.begin(), candidateBuf.end());
 
     if (candidate == word) {
       f.close();
