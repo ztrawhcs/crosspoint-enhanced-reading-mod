@@ -140,6 +140,28 @@ void EpubReaderActivity::onEnter() {
   epub->setupCacheDir();
 
   FsFile f;
+  if (Storage.openFileForRead("ERS", epub->getCachePath() + "/bookstats.bin", f)) {
+    uint8_t statsData[4];
+    if (f.read(statsData, 4) == 4) {
+      totalBookBytes = statsData[0] | (statsData[1] << 8) | (statsData[2] << 16) | (statsData[3] << 24);
+      Serial.printf("[%lu] [ERS] Loaded bookstats: %u bytes\n", millis(), totalBookBytes);
+    }
+    f.close();
+  } else {
+    const size_t bookSize = epub->getBookSize();
+    if (bookSize > 0 && Storage.openFileForWrite("ERS", epub->getCachePath() + "/bookstats.bin", f)) {
+      uint8_t statsData[4];
+      statsData[0] = bookSize & 0xFF;
+      statsData[1] = (bookSize >> 8) & 0xFF;
+      statsData[2] = (bookSize >> 16) & 0xFF;
+      statsData[3] = (bookSize >> 24) & 0xFF;
+      f.write(statsData, 4);
+      f.close();
+      totalBookBytes = bookSize;
+      Serial.printf("[%lu] [ERS] Saved bookstats: %u bytes\n", millis(), totalBookBytes);
+    }
+  }
+
   if (Storage.openFileForRead("ERS", epub->getCachePath() + "/progress.bin", f)) {
     uint8_t data[6];
     int dataSize = f.read(data, 6);
@@ -285,7 +307,7 @@ void EpubReaderActivity::loop() {
     exitActivity();
     enterNewActivity(new EpubReaderMenuActivity(
         this->renderer, this->mappedInput, epub->getTitle(), currentPage, totalPages, bookProgressPercent,
-        SETTINGS.orientation, [this](const uint8_t orientation) { onReaderMenuBack(orientation); },
+        totalBookBytes, SETTINGS.orientation, [this](const uint8_t orientation) { onReaderMenuBack(orientation); },
         [this](EpubReaderMenuActivity::MenuAction action) { onReaderMenuConfirm(action); }));
     xSemaphoreGive(renderingMutex);
   }

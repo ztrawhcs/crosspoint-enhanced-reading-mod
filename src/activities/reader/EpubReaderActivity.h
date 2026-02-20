@@ -18,6 +18,7 @@ class EpubReaderActivity final : public ActivityWithSubactivity {
   int pagesUntilFullRefresh = 0;
   int cachedSpineIndex = 0;
   int cachedChapterTotalPageCount = 0;
+  size_t totalBookBytes = 0;
   // Signals that the next render should reposition within the newly loaded section
   // based on a cross-book percentage jump.
   bool pendingPercentJump = false;
