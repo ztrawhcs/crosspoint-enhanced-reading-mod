@@ -40,7 +40,7 @@ class EpubReaderActivity final : public ActivityWithSubactivity {
   void renderStatusBar(int orientedMarginRight, int orientedMarginBottom, int orientedMarginLeft) const;
   void saveProgress(int spineIndex, int currentPage, int pageCount);
   std::string captureAnchorWord() const;
-  int findPageForAnchorWord(const std::string& word) const;
+  int findPageForAnchorWord(const std::string& anchorWord) const;
   // Jump to a percentage of the book (0-100), mapping it to spine and page.
   void jumpToPercent(int percent);
   void onReaderMenuBack(uint8_t orientation);
