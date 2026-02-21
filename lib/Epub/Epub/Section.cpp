@@ -14,7 +14,7 @@ constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) +
                                  sizeof(bool) + sizeof(uint32_t) + sizeof(uint32_t);
 }  // namespace
 
-uint32_t Section::onPageComplete(std::unique_ptr<Page> page, uint32_t charOffset) {
+uint32_t Section::onPageComplete(std::unique_ptr<Page> page, uint32_t wordIndex) {
   if (!file) {
     Serial.printf("[%lu] [SCT] File not open for writing page %d\n", millis(), pageCount);
     return 0;
@@ -56,7 +56,7 @@ void Section::writeSectionFileHeader(const int fontId, const float lineCompressi
   serialization::writePod(file, forceBold);
   serialization::writePod(file, pageCount);
   serialization::writePod(file, static_cast<uint32_t>(0));  // lutOffset placeholder
-  serialization::writePod(file, static_cast<uint32_t>(0));  // charLutOffset placeholder
+  serialization::writePod(file, static_cast<uint32_t>(0));  // wordIndexLutOffset placeholder
 }
 
 bool Section::loadSectionFile(const int fontId, const float lineCompression, const bool extraParagraphSpacing,
@@ -182,14 +182,14 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
                          viewportHeight, hyphenationEnabled, embeddedStyle, forceBold);
 
   std::vector<uint32_t> lut = {};
-  std::vector<uint32_t> charOffsetLut = {};
+  std::vector<uint32_t> wordIndexLut = {};
 
   ChapterHtmlSlimParser visitor(
       tmpHtmlPath, renderer, fontId, lineCompression, extraParagraphSpacing, paragraphAlignment, viewportWidth,
       viewportHeight, hyphenationEnabled,
-      [this, &lut, &charOffsetLut](std::unique_ptr<Page> page, uint32_t charOffset) {
-        lut.emplace_back(this->onPageComplete(std::move(page), charOffset));
-        charOffsetLut.emplace_back(charOffset);
+      [this, &lut, &wordIndexLut](std::unique_ptr<Page> page, uint32_t wordIndex) {
+        lut.emplace_back(this->onPageComplete(std::move(page), wordIndex));
+        wordIndexLut.emplace_back(wordIndex);
       },
       embeddedStyle, popupFn, embeddedStyle ? epub->getCssParser() : nullptr);
 
@@ -222,15 +222,15 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
     return false;
   }
 
-  const uint32_t charLutOffset = file.position();
-  for (const uint32_t& charOffset : charOffsetLut) {
-    serialization::writePod(file, charOffset);
+  const uint32_t wordIndexLutOffset = file.position();
+  for (const uint32_t& wi : wordIndexLut) {
+    serialization::writePod(file, wi);
   }
 
   file.seek(HEADER_SIZE - sizeof(uint32_t) - sizeof(uint32_t) - sizeof(pageCount));
   serialization::writePod(file, pageCount);
   serialization::writePod(file, lutOffset);
-  serialization::writePod(file, charLutOffset);
+  serialization::writePod(file, wordIndexLutOffset);
   file.close();
   return true;
 }
@@ -243,7 +243,7 @@ std::unique_ptr<Page> Section::loadPageFromSectionFile() {
   file.seek(HEADER_SIZE - sizeof(uint32_t) - sizeof(uint32_t));
   uint32_t lutOffset;
   serialization::readPod(file, lutOffset);
-  // skip charLutOffset - not needed for normal page loading
+  // skip wordIndexLutOffset - not needed for normal page loading
   file.seek(lutOffset + sizeof(uint32_t) * currentPage);
   uint32_t pagePos;
   serialization::readPod(file, pagePos);
@@ -254,21 +254,21 @@ std::unique_ptr<Page> Section::loadPageFromSectionFile() {
   return page;
 }
 
-uint32_t Section::getCharOffsetForPage(const int page) const {
+uint32_t Section::getWordIndexForPage(const int page) const {
   FsFile f;
   if (!Storage.openFileForRead("SCT", filePath, f)) return 0;
 
   f.seek(HEADER_SIZE - sizeof(uint32_t));
-  uint32_t charLutOffset;
-  serialization::readPod(f, charLutOffset);
-  f.seek(charLutOffset + sizeof(uint32_t) * page);
-  uint32_t charOffset;
-  serialization::readPod(f, charOffset);
+  uint32_t wordIndexLutOffset;
+  serialization::readPod(f, wordIndexLutOffset);
+  f.seek(wordIndexLutOffset + sizeof(uint32_t) * page);
+  uint32_t wi;
+  serialization::readPod(f, wi);
   f.close();
-  return charOffset;
+  return wi;
 }
 
-int Section::findPageForCharOffset(const uint32_t charOffset) const {
+int Section::findPageForWordIndex(const uint32_t targetWordIndex) const {
   FsFile f;
   if (!Storage.openFileForRead("SCT", filePath, f)) return 0;
 
@@ -277,22 +277,22 @@ int Section::findPageForCharOffset(const uint32_t charOffset) const {
   serialization::readPod(f, count);
   uint32_t lutOffset;
   serialization::readPod(f, lutOffset);  // skip regular lutOffset
-  uint32_t charLutOffset;
-  serialization::readPod(f, charLutOffset);
+  uint32_t wordIndexLutOffset;
+  serialization::readPod(f, wordIndexLutOffset);
 
-  // Find the last page whose charOffset <= target
+  // Find the last page whose wordIndex <= targetWordIndex
   int result = 0;
   for (uint16_t p = 0; p < count; p++) {
-    f.seek(charLutOffset + sizeof(uint32_t) * p);
-    uint32_t offset;
-    serialization::readPod(f, offset);
-    if (offset <= charOffset) {
+    f.seek(wordIndexLutOffset + sizeof(uint32_t) * p);
+    uint32_t wi;
+    serialization::readPod(f, wi);
+    if (wi <= targetWordIndex) {
       result = static_cast<int>(p);
     } else {
       break;
     }
   }
   f.close();
-  Serial.printf("[ERS] findPageForCharOffset(%u) -> page %d\n", charOffset, result);
+  Serial.printf("[ERS] findPageForWordIndex(%u) -> page %d\n", targetWordIndex, result);
   return result;
 }

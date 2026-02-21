@@ -17,7 +17,7 @@ class Section {
   void writeSectionFileHeader(int fontId, float lineCompression, bool extraParagraphSpacing, uint8_t paragraphAlignment,
                               uint16_t viewportWidth, uint16_t viewportHeight, bool hyphenationEnabled,
                               bool embeddedStyle, bool forceBold);
-  uint32_t onPageComplete(std::unique_ptr<Page> page, uint32_t charOffset);
+  uint32_t onPageComplete(std::unique_ptr<Page> page, uint32_t wordIndex);
 
  public:
   uint16_t pageCount = 0;
@@ -37,6 +37,6 @@ class Section {
                          uint16_t viewportWidth, uint16_t viewportHeight, bool hyphenationEnabled, bool embeddedStyle,
                          bool forceBold, const std::function<void()>& popupFn = nullptr);
   std::unique_ptr<Page> loadPageFromSectionFile();
-  uint32_t getCharOffsetForPage(int page) const;
-  int findPageForCharOffset(uint32_t charOffset) const;
+  uint32_t getWordIndexForPage(int page) const;
+  int findPageForWordIndex(uint32_t targetWordIndex) const;
 };
