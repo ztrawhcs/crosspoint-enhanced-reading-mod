@@ -19,8 +19,8 @@ class EpubReaderActivity final : public ActivityWithSubactivity {
   int cachedSpineIndex = 0;
   int cachedChapterTotalPageCount = 0;
   size_t totalBookBytes = 0;
-  uint32_t charAnchor = 0;     // HTML byte offset captured before font size change
-  bool hasCharAnchor = false;  // true when charAnchor is valid
+  std::string anchorWord;       // 3-word phrase from top of page before font size change
+  int anchorExpectedPage = -1;  // expected landing page in new layout (ratio estimate)
   // Signals that the next render should reposition within the newly loaded section
   // based on a cross-book percentage jump.
   bool pendingPercentJump = false;
@@ -41,6 +41,8 @@ class EpubReaderActivity final : public ActivityWithSubactivity {
   void renderStatusBar(int orientedMarginRight, int orientedMarginBottom, int orientedMarginLeft) const;
   void saveProgress(int spineIndex, int currentPage, int pageCount);
   // Jump to a percentage of the book (0-100), mapping it to spine and page.
+  std::string captureAnchorWord() const;
+  int findPageForAnchorWord(const std::string& phrase, int expectedPage) const;
   void jumpToPercent(int percent);
   void onReaderMenuBack(uint8_t orientation);
   void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action);

@@ -473,11 +473,13 @@ void EpubReaderActivity::loop() {
     }
     if (changed) {
       if (section) {
-        charAnchor = section->getCharOffsetForPage(section->currentPage);
-        hasCharAnchor = true;
+        anchorWord = captureAnchorWord();
         cachedSpineIndex = currentSpineIndex;
         cachedChapterTotalPageCount = section->pageCount;
         nextPageNumber = section->currentPage;
+        // Estimate landing page in new layout using ratio for range search
+        const float ratio = static_cast<float>(section->currentPage) / static_cast<float>(section->pageCount);
+        anchorExpectedPage = static_cast<int>(ratio * section->pageCount);
       }
       SETTINGS.saveToFile();
       section.reset();
@@ -568,11 +570,12 @@ void EpubReaderActivity::loop() {
     }
     if (changed) {
       if (section) {
-        charAnchor = section->getCharOffsetForPage(section->currentPage);
-        hasCharAnchor = true;
+        anchorWord = captureAnchorWord();
         cachedSpineIndex = currentSpineIndex;
         cachedChapterTotalPageCount = section->pageCount;
         nextPageNumber = section->currentPage;
+        const float ratio = static_cast<float>(section->currentPage) / static_cast<float>(section->pageCount);
+        anchorExpectedPage = static_cast<int>(ratio * section->pageCount);
       }
       SETTINGS.saveToFile();
       section.reset();
@@ -957,12 +960,21 @@ void EpubReaderActivity::renderScreen() {
 
     if (cachedChapterTotalPageCount > 0) {
       if (currentSpineIndex == cachedSpineIndex && section->pageCount != cachedChapterTotalPageCount) {
-        if (hasCharAnchor) {
-          section->currentPage = section->findPageForCharOffset(charAnchor);
-          hasCharAnchor = false;
-          charAnchor = 0;
+        if (!anchorWord.empty()) {
+          const float ratio =
+              static_cast<float>(nextPageNumber) / static_cast<float>(cachedChapterTotalPageCount);
+          const int expectedPage = static_cast<int>(ratio * static_cast<float>(section->pageCount));
+          const int foundPage = findPageForAnchorWord(anchorWord, expectedPage);
+          if (foundPage >= 0) {
+            section->currentPage = foundPage;
+          } else {
+            section->currentPage = expectedPage;
+          }
+          anchorWord.clear();
+          anchorExpectedPage = -1;
         } else {
-          float progress = static_cast<float>(section->currentPage) / static_cast<float>(cachedChapterTotalPageCount);
+          float progress =
+              static_cast<float>(section->currentPage) / static_cast<float>(cachedChapterTotalPageCount);
           section->currentPage = static_cast<int>(progress * section->pageCount);
         }
       }
@@ -1028,6 +1040,189 @@ void EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageC
   } else {
     Serial.printf("[ERS] Could not save progress!\n");
   }
+}
+
+// Reads the first 3 words from the current page's first line, stripped of punctuation, joined by spaces.
+std::string EpubReaderActivity::captureAnchorWord() const {
+  if (!section || !epub) return "";
+  const std::string filePath = epub->getCachePath() + "/sections/" + std::to_string(currentSpineIndex) + ".bin";
+  FsFile f;
+  if (!Storage.openFileForRead("ERS", filePath, f)) return "";
+
+  constexpr uint32_t PAGE_COUNT_OFFSET = 18;
+  f.seek(PAGE_COUNT_OFFSET);
+  uint16_t pageCount;
+  uint32_t lutOffset;
+  {
+    uint8_t buf[6];
+    f.read(buf, 6);
+    pageCount = buf[0] | (buf[1] << 8);
+    lutOffset = buf[2] | (buf[3] << 8) | (buf[4] << 16) | (buf[5] << 24);
+  }
+  if (section->currentPage >= pageCount) {
+    f.close();
+    return "";
+  }
+
+  f.seek(lutOffset + sizeof(uint32_t) * section->currentPage);
+  uint32_t pagePos;
+  {
+    uint8_t buf[4];
+    f.read(buf, 4);
+    pagePos = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
+  }
+  f.seek(pagePos);
+
+  // Read elementCount
+  uint16_t elementCount;
+  {
+    uint8_t buf[2];
+    f.read(buf, 2);
+    elementCount = buf[0] | (buf[1] << 8);
+  }
+  if (elementCount == 0) {
+    f.close();
+    return "";
+  }
+
+  // Skip tag(1) + xPos(2) + yPos(2)
+  f.seek(f.position() + 5);
+
+  uint16_t wordCount;
+  {
+    uint8_t buf[2];
+    f.read(buf, 2);
+    wordCount = buf[0] | (buf[1] << 8);
+  }
+  if (wordCount == 0) {
+    f.close();
+    return "";
+  }
+
+  // Read up to 3 words, strip punctuation
+  const auto stripPunct = [](const std::string& s) {
+    size_t start = 0;
+    size_t end = s.size();
+    while (start < end && ispunct(static_cast<unsigned char>(s[start]))) start++;
+    while (end > start && ispunct(static_cast<unsigned char>(s[end - 1]))) end--;
+    return s.substr(start, end - start);
+  };
+
+  std::vector<std::string> words;
+  for (uint16_t w = 0; w < wordCount && (int)words.size() < 3; w++) {
+    uint32_t wordLen;
+    {
+      uint8_t buf[4];
+      if (f.read(buf, 4) != 4) break;
+      wordLen = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
+    }
+    if (wordLen == 0 || wordLen > 200) break;
+    std::vector<uint8_t> wbuf(wordLen);
+    f.read(wbuf.data(), wordLen);
+    std::string stripped = stripPunct(std::string(wbuf.begin(), wbuf.end()));
+    if (!stripped.empty()) words.push_back(stripped);
+  }
+  f.close();
+
+  std::string phrase;
+  for (size_t i = 0; i < words.size(); i++) {
+    if (i > 0) phrase += " ";
+    phrase += words[i];
+  }
+  Serial.printf("[ERS] Captured anchor phrase: %s\n", phrase.c_str());
+  return phrase;
+}
+
+// Searches for a 3-word phrase within a narrow range around expectedPage.
+// Returns the matching page index, or -1 if not found.
+int EpubReaderActivity::findPageForAnchorWord(const std::string& phrase, const int expectedPage) const {
+  if (!section || !epub || phrase.empty()) return -1;
+  const std::string filePath = epub->getCachePath() + "/sections/" + std::to_string(currentSpineIndex) + ".bin";
+  FsFile f;
+  if (!Storage.openFileForRead("ERS", filePath, f)) return -1;
+
+  constexpr uint32_t PAGE_COUNT_OFFSET = 18;
+  f.seek(PAGE_COUNT_OFFSET);
+  uint16_t pageCount;
+  uint32_t lutOffset;
+  {
+    uint8_t buf[6];
+    f.read(buf, 6);
+    pageCount = buf[0] | (buf[1] << 8);
+    lutOffset = buf[2] | (buf[3] << 8) | (buf[4] << 16) | (buf[5] << 24);
+  }
+
+  const auto stripPunct = [](const std::string& s) {
+    size_t start = 0;
+    size_t end = s.size();
+    while (start < end && ispunct(static_cast<unsigned char>(s[start]))) start++;
+    while (end > start && ispunct(static_cast<unsigned char>(s[end - 1]))) end--;
+    return s.substr(start, end - start);
+  };
+
+  constexpr int SEARCH_RADIUS = 12;
+  const int lo = std::max(0, expectedPage - SEARCH_RADIUS);
+  const int hi = std::min(static_cast<int>(pageCount) - 1, expectedPage + SEARCH_RADIUS);
+
+  for (int p = lo; p <= hi; p++) {
+    f.seek(lutOffset + sizeof(uint32_t) * p);
+    uint32_t pagePos;
+    {
+      uint8_t buf[4];
+      f.read(buf, 4);
+      pagePos = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
+    }
+    f.seek(pagePos);
+
+    uint16_t elementCount;
+    {
+      uint8_t buf[2];
+      f.read(buf, 2);
+      elementCount = buf[0] | (buf[1] << 8);
+    }
+    if (elementCount == 0) continue;
+
+    f.seek(f.position() + 5);  // skip tag + xPos + yPos
+
+    uint16_t wordCount;
+    {
+      uint8_t buf[2];
+      f.read(buf, 2);
+      wordCount = buf[0] | (buf[1] << 8);
+    }
+    if (wordCount == 0) continue;
+
+    std::vector<std::string> words;
+    for (uint16_t w = 0; w < wordCount && (int)words.size() < 3; w++) {
+      uint32_t wordLen;
+      {
+        uint8_t buf[4];
+        if (f.read(buf, 4) != 4) break;
+        wordLen = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
+      }
+      if (wordLen == 0 || wordLen > 200) break;
+      std::vector<uint8_t> wbuf(wordLen);
+      f.read(wbuf.data(), wordLen);
+      std::string stripped = stripPunct(std::string(wbuf.begin(), wbuf.end()));
+      if (!stripped.empty()) words.push_back(stripped);
+    }
+
+    std::string candidate;
+    for (size_t i = 0; i < words.size(); i++) {
+      if (i > 0) candidate += " ";
+      candidate += words[i];
+    }
+
+    if (candidate == phrase) {
+      f.close();
+      Serial.printf("[ERS] Found anchor phrase on page %d\n", p);
+      return p;
+    }
+  }
+
+  f.close();
+  Serial.printf("[ERS] Anchor phrase not found in range [%d-%d], using ratio\n", lo, hi);
+  return -1;
 }
 
 void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
