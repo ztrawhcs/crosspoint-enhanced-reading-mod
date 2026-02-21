@@ -91,6 +91,7 @@ void ChapterHtmlSlimParser::flushPartWordBuffer() {
   // flush the buffer
   partWordBuffer[partWordBufferIndex] = '\0';
   currentTextBlock->addWord(partWordBuffer, fontStyle, false, nextWordContinues);
+  wordIndex++;
   partWordBufferIndex = 0;
   nextWordContinues = false;
 }
@@ -347,9 +348,6 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
     return;
   }
 
-  // Track cumulative bytes of text content processed
-  self->processedByteCount += static_cast<uint32_t>(len);
-
   for (int i = 0; i < len; i++) {
     if (isWhitespace(s[i])) {
       // Currently looking at whitespace, if there's anything in the partWordBuffer, flush it
@@ -546,7 +544,7 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
   // Process last page if there is still text
   if (currentTextBlock) {
     makePages();
-    completePageFn(std::move(currentPage), currentPageStartByte);
+    completePageFn(std::move(currentPage), currentPageWordIndex);
     currentPage.reset();
     currentTextBlock.reset();
   }
@@ -558,10 +556,10 @@ void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line) {
   const int lineHeight = renderer.getLineHeight(fontId) * lineCompression;
 
   if (currentPageNextY + lineHeight > viewportHeight) {
-    completePageFn(std::move(currentPage), currentPageStartByte);
+    completePageFn(std::move(currentPage), currentPageWordIndex);
     currentPage.reset(new Page());
     currentPageNextY = 0;
-    currentPageStartByte = processedByteCount;
+    currentPageWordIndex = wordIndex;
   }
 
   // Apply horizontal left inset (margin + padding) as x position offset
