@@ -1,6 +1,7 @@
 #include "MappedInputManager.h"
 
 #include "CrossPointSettings.h"
+#include "ble/BlePageTurner.h"
 
 namespace {
 using ButtonIndex = uint8_t;
@@ -56,7 +57,12 @@ bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint
 
 bool MappedInputManager::wasPressed(const Button button) const { return mapButton(button, &HalGPIO::wasPressed); }
 
-bool MappedInputManager::wasReleased(const Button button) const { return mapButton(button, &HalGPIO::wasReleased); }
+bool MappedInputManager::wasReleased(const Button button) const {
+  const bool physical = mapButton(button, &HalGPIO::wasReleased);
+  if (button == Button::PageForward) return physical || BLE_PAGE_TURNER.wasNextPressed();
+  if (button == Button::PageBack) return physical || BLE_PAGE_TURNER.wasPrevPressed();
+  return physical;
+}
 
 bool MappedInputManager::isPressed(const Button button) const { return mapButton(button, &HalGPIO::isPressed); }
 

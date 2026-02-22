@@ -29,6 +29,7 @@
 #include "activities/reader/ReaderActivity.h"
 #include "activities/settings/SettingsActivity.h"
 #include "activities/util/FullScreenMessageActivity.h"
+#include "ble/BlePageTurner.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/ButtonNavigator.h"
@@ -315,6 +316,8 @@ void setup() {
   }
 
   SETTINGS.loadFromFile();
+  BLE_PAGE_TURNER.setTargetMac(std::string(SETTINGS.blePageTurnerMac));
+  BLE_PAGE_TURNER.begin();
   I18N.loadSettings();
   KOREADER_STORE.loadFromFile();
   UITheme::getInstance().reload();
