@@ -8,7 +8,7 @@ This is the **"ztrawhcs"** fork of the open-source [Crosspoint e-reader firmware
 
 - **This repo:** https://github.com/ztrawhcs/crosspoint-enhanced-reading-mod
 - **Upstream repo:** https://github.com/crosspoint-reader/crosspoint-reader
-- **Current version:** v1.2.0
+- **Current version:** v2.0.0
 
 ## Build Commands
 

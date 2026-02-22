@@ -19,6 +19,6 @@ void BootActivity::onEnter() {
                             EpdFontFamily::BOLD);
   renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + 95, tr(STR_BOOTING));
   // Custom Version Number
-  renderer.drawCenteredText(SMALL_FONT_ID, pageHeight - 30, "ztrawhcs version 1.2.0");
+  renderer.drawCenteredText(SMALL_FONT_ID, pageHeight - 30, "ztrawhcs version 2.0.0");
   renderer.displayBuffer();
 }
