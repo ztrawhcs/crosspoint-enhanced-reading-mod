@@ -389,12 +389,13 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
   // Spotted when reading Intermezzo, there are some really long text blocks in there.
   if (self->currentTextBlock->size() > 750) {
     Serial.printf("[%lu] [EHP] Text block too long, splitting into multiple pages\n", millis());
+    uint32_t lineWordIdx = self->paragraphStartWordIndex;
     self->currentTextBlock->layoutAndExtractLines(
         self->renderer, self->fontId, self->viewportWidth,
-        [self, lineWordIdx = self->paragraphStartWordIndex](const std::shared_ptr<TextBlock>& textBlock) mutable {
+        [self, &lineWordIdx](const std::shared_ptr<TextBlock>& textBlock) {
           self->addLineToPage(textBlock, lineWordIdx);
-          lineWordIdx += static_cast<uint32_t>(textBlock->words.size());
-          self->paragraphStartWordIndex = lineWordIdx;  // advance for remaining lines
+          lineWordIdx += static_cast<uint32_t>(textBlock->getWordCount());
+          self->paragraphStartWordIndex = lineWordIdx;
         },
         false);
   }
@@ -601,11 +602,12 @@ void ChapterHtmlSlimParser::makePages() {
   const uint16_t effectiveWidth =
       (horizontalInset < viewportWidth) ? static_cast<uint16_t>(viewportWidth - horizontalInset) : viewportWidth;
 
+  uint32_t lineWordIdx = paragraphStartWordIndex;
   currentTextBlock->layoutAndExtractLines(
       renderer, fontId, effectiveWidth,
-      [this, lineWordIdx = paragraphStartWordIndex](const std::shared_ptr<TextBlock>& textBlock) mutable {
+      [this, &lineWordIdx](const std::shared_ptr<TextBlock>& textBlock) {
         addLineToPage(textBlock, lineWordIdx);
-        lineWordIdx += static_cast<uint32_t>(textBlock->words.size());
+        lineWordIdx += static_cast<uint32_t>(textBlock->getWordCount());
       });
 
   // Apply bottom spacing after the paragraph (stored in pixels)
