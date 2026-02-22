@@ -1,8 +1,6 @@
 #pragma once
 #include <Epub.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/semphr.h>
-#include <freertos/task.h>
+#include <I18n.h>
 
 #include <functional>
 #include <string>
@@ -28,8 +26,7 @@ class EpubReaderMenuActivity final : public ActivityWithSubactivity {
   explicit EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title,
                                   const int currentPage, const int totalPages, const int bookProgressPercent,
                                   const float bookProgressExact, const size_t totalBookBytes,
-                                  const uint8_t currentOrientation,
-                                  const std::function<void(uint8_t)>& onBack,
+                                  const uint8_t currentOrientation, const std::function<void(uint8_t)>& onBack,
                                   const std::function<void(MenuAction)>& onAction)
       : ActivityWithSubactivity("EpubReaderMenu", renderer, mappedInput),
         title(title),
@@ -45,33 +42,34 @@ class EpubReaderMenuActivity final : public ActivityWithSubactivity {
   void onEnter() override;
   void onExit() override;
   void loop() override;
+  void render(Activity::RenderLock&&) override;
 
  private:
   struct MenuItem {
     MenuAction action;
-    std::string label;
+    StrId labelId;
   };
 
-  const std::vector<MenuItem> menuItems = {{MenuAction::SELECT_CHAPTER, "Go to Chapter"},
-                                           {MenuAction::ROTATE_SCREEN, "Reading Orientation"},
-                                           {MenuAction::BUTTON_MOD_SETTINGS, "Button Mods"},
-                                           {MenuAction::SWAP_CONTROLS, "Portrait Controls"},
-                                           {MenuAction::SWAP_LANDSCAPE_CONTROLS, "Landscape Controls"},
-                                           {MenuAction::GO_TO_PERCENT, "Go to %"},
-                                           {MenuAction::GO_HOME, "Go Home"},
-                                           {MenuAction::SYNC, "Sync Progress"},
-                                           {MenuAction::DELETE_CACHE, "Delete Book Cache"}};
+  // Fixed menu layout (order matters for up/down navigation).
+  const std::vector<MenuItem> menuItems = {{MenuAction::SELECT_CHAPTER, StrId::STR_SELECT_CHAPTER},
+                                           {MenuAction::ROTATE_SCREEN, StrId::STR_ORIENTATION},
+                                           {MenuAction::BUTTON_MOD_SETTINGS, StrId::STR_BUTTON_MOD_SETTINGS},
+                                           {MenuAction::SWAP_CONTROLS, StrId::STR_PORTRAIT_CONTROLS},
+                                           {MenuAction::SWAP_LANDSCAPE_CONTROLS, StrId::STR_LANDSCAPE_CONTROLS},
+                                           {MenuAction::GO_TO_PERCENT, StrId::STR_GO_TO_PERCENT},
+                                           {MenuAction::GO_HOME, StrId::STR_GO_HOME_BUTTON},
+                                           {MenuAction::SYNC, StrId::STR_SYNC_PROGRESS},
+                                           {MenuAction::DELETE_CACHE, StrId::STR_DELETE_CACHE}};
 
   int selectedIndex = 0;
-  bool updateRequired = false;
-  TaskHandle_t displayTaskHandle = nullptr;
-  SemaphoreHandle_t renderingMutex = nullptr;
+
   ButtonNavigator buttonNavigator;
   std::string title = "Reader Menu";
   uint8_t pendingOrientation = 0;
-  const std::vector<const char*> orientationLabels = {"Portrait", "Landscape CW", "Inverted", "Landscape CCW"};
+  const std::vector<StrId> orientationLabels = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_INVERTED,
+                                                StrId::STR_LANDSCAPE_CCW};
   const std::vector<const char*> buttonModLabels = {"Off", "Simple", "Full"};
-  const std::vector<const char*> swapControlsLabels = {"Front: Format / Side: Page", "Front: Page / Side: Format"};
+  const std::vector<const char*> swapControlsLabels = {"Default", "Swapped"};
   int currentPage = 0;
   int totalPages = 0;
   int bookProgressPercent = 0;
@@ -80,8 +78,4 @@ class EpubReaderMenuActivity final : public ActivityWithSubactivity {
 
   const std::function<void(uint8_t)> onBack;
   const std::function<void(MenuAction)> onAction;
-
-  static void taskTrampoline(void* param);
-  [[noreturn]] void displayTaskLoop();
-  void renderScreen();
 };

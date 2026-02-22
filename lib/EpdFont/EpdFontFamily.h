@@ -10,17 +10,18 @@ class EpdFontFamily {
   static bool globalForceBold;
 
   explicit EpdFontFamily(const EpdFont* regular, const EpdFont* bold = nullptr, const EpdFont* italic = nullptr,
-                         const EpdFont* boldItalic = nullptr);
-
-  const EpdFont* getFont(Style style) const;
-  const EpdFontData* getData(Style style) const;
-  const EpdGlyph* getGlyph(uint32_t cp, Style style) const;
-  bool hasPrintableChars(const char* string, Style style) const;
-  void getTextDimensions(const char* string, int* w, int* h, Style style) const;
+                         const EpdFont* boldItalic = nullptr)
+      : regular(regular), bold(bold), italic(italic), boldItalic(boldItalic) {}
+  ~EpdFontFamily() = default;
+  void getTextDimensions(const char* string, int* w, int* h, Style style = REGULAR) const;
+  const EpdFontData* getData(Style style = REGULAR) const;
+  const EpdGlyph* getGlyph(uint32_t cp, Style style = REGULAR) const;
 
  private:
   const EpdFont* regular;
   const EpdFont* bold;
   const EpdFont* italic;
   const EpdFont* boldItalic;
+
+  const EpdFont* getFont(Style style) const;
 };
