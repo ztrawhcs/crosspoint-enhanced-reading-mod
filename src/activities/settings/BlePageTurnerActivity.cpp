@@ -27,6 +27,16 @@ void BlePageTurnerActivity::onExit() {
 }
 
 void BlePageTurnerActivity::loop() {
+  // Always handle Back — even during a scan
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    if (scanning) {
+      BLE_PAGE_TURNER.stopScan();
+      scanning = false;
+    }
+    onBack();
+    return;
+  }
+
   // Check if scan just finished
   if (scanning && !BLE_PAGE_TURNER.isScanning()) {
     scanning = false;
@@ -65,11 +75,6 @@ void BlePageTurnerActivity::loop() {
       BLE_PAGE_TURNER.setTargetMac(mac);
       onBack();
     }
-    return;
-  }
-
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    onBack();
     return;
   }
 
