@@ -2,6 +2,9 @@
 #include <cstdint>
 #include <iosfwd>
 
+// Forward declarations
+class FsFile;
+
 class CrossPointSettings {
  private:
   CrossPointSettings() = default;
@@ -82,7 +85,8 @@ class CrossPointSettings {
   };
   enum SHORT_PWRBTN { IGNORE = 0, SLEEP = 1, PAGE_TURN = 2, SHORT_PWRBTN_COUNT };
   enum HIDE_BATTERY_PERCENTAGE { HIDE_NEVER = 0, HIDE_READER = 1, HIDE_ALWAYS = 2, HIDE_BATTERY_PERCENTAGE_COUNT };
-  enum UI_THEME { CLASSIC = 0, LYRA = 1 };
+  // UI Theme
+  enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2 };
 
   uint8_t sleepScreen = DARK;
   uint8_t sleepScreenCoverMode = FIT;
@@ -128,6 +132,10 @@ class CrossPointSettings {
     return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;
   }
   int getReaderFontId() const;
+
+  // If count_only is true, returns the number of settings items that would be written.
+  uint8_t writeSettings(FsFile& file, bool count_only = false) const;
+
   bool saveToFile() const;
   bool loadFromFile();
   float getReaderLineCompression() const;
