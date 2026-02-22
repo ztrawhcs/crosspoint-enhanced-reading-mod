@@ -34,8 +34,9 @@ class ChapterHtmlSlimParser {
   std::unique_ptr<ParsedText> currentTextBlock = nullptr;
   std::unique_ptr<Page> currentPage = nullptr;
   int16_t currentPageNextY = 0;
-  uint32_t wordIndex = 0;          // total words added to text blocks so far
-  uint32_t currentPageWordIndex = 0;  // wordIndex at the start of the current page
+  uint32_t wordIndex = 0;               // total words added to text blocks so far
+  uint32_t currentPageWordIndex = 0;    // wordIndex at the start of the current page
+  uint32_t paragraphStartWordIndex = 0; // wordIndex at the start of the current paragraph
   int fontId;
   float lineCompression;
   bool extraParagraphSpacing;
@@ -93,5 +94,5 @@ class ChapterHtmlSlimParser {
 
   ~ChapterHtmlSlimParser() = default;
   bool parseAndBuildPages();
-  void addLineToPage(std::shared_ptr<TextBlock> line);
+  void addLineToPage(std::shared_ptr<TextBlock> line, uint32_t lineWordIndex);
 };

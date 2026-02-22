@@ -111,6 +111,7 @@ void ChapterHtmlSlimParser::startNewTextBlock(const BlockStyle& blockStyle) {
 
     makePages();
   }
+  paragraphStartWordIndex = wordIndex;  // snapshot before new paragraph's words are added
   currentTextBlock.reset(new ParsedText(extraParagraphSpacing, hyphenationEnabled, blockStyle));
 }
 
@@ -390,7 +391,12 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
     Serial.printf("[%lu] [EHP] Text block too long, splitting into multiple pages\n", millis());
     self->currentTextBlock->layoutAndExtractLines(
         self->renderer, self->fontId, self->viewportWidth,
-        [self](const std::shared_ptr<TextBlock>& textBlock) { self->addLineToPage(textBlock); }, false);
+        [self, lineWordIdx = self->paragraphStartWordIndex](const std::shared_ptr<TextBlock>& textBlock) mutable {
+          self->addLineToPage(textBlock, lineWordIdx);
+          lineWordIdx += static_cast<uint32_t>(textBlock->words.size());
+          self->paragraphStartWordIndex = lineWordIdx;  // advance for remaining lines
+        },
+        false);
   }
 }
 
@@ -552,14 +558,14 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
   return true;
 }
 
-void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line) {
+void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line, uint32_t lineWordIndex) {
   const int lineHeight = renderer.getLineHeight(fontId) * lineCompression;
 
   if (currentPageNextY + lineHeight > viewportHeight) {
     completePageFn(std::move(currentPage), currentPageWordIndex);
     currentPage.reset(new Page());
     currentPageNextY = 0;
-    currentPageWordIndex = wordIndex;
+    currentPageWordIndex = lineWordIndex;  // first word of the new page is exactly this line's first word
   }
 
   // Apply horizontal left inset (margin + padding) as x position offset
@@ -597,7 +603,10 @@ void ChapterHtmlSlimParser::makePages() {
 
   currentTextBlock->layoutAndExtractLines(
       renderer, fontId, effectiveWidth,
-      [this](const std::shared_ptr<TextBlock>& textBlock) { addLineToPage(textBlock); });
+      [this, lineWordIdx = paragraphStartWordIndex](const std::shared_ptr<TextBlock>& textBlock) mutable {
+        addLineToPage(textBlock, lineWordIdx);
+        lineWordIdx += static_cast<uint32_t>(textBlock->words.size());
+      });
 
   // Apply bottom spacing after the paragraph (stored in pixels)
   if (blockStyle.marginBottom > 0) {
