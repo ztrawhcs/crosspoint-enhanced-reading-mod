@@ -131,7 +131,6 @@ uint8_t CrossPointSettings::writeSettings(FsFile& file, bool count_only) const {
   writer.writeItem(file, embeddedStyle);
   // New fields need to be added at end for backward compatibility
   writer.writeItem(file, buttonModMode);
-  writer.writeItemString(file, blePageTurnerMac);
   writer.writeItem(file, forceBoldText);
   writer.writeItem(file, swapPortraitControls);
   writer.writeItem(file, swapLandscapeControls);
@@ -259,14 +258,6 @@ bool CrossPointSettings::loadFromFile() {
     serialization::readPod(inputFile, embeddedStyle);
     if (++settingsRead >= fileSettingsCount) break;
     readAndValidate(inputFile, buttonModMode, BUTTON_MOD_MODE_COUNT);
-    if (++settingsRead >= fileSettingsCount) break;
-
-    {
-      std::string macStr;
-      serialization::readString(inputFile, macStr);
-      strncpy(blePageTurnerMac, macStr.c_str(), sizeof(blePageTurnerMac) - 1);
-      blePageTurnerMac[sizeof(blePageTurnerMac) - 1] = '\0';
-    }
     if (++settingsRead >= fileSettingsCount) break;
 
     serialization::readPod(inputFile, forceBoldText);

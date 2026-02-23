@@ -3,7 +3,6 @@
 #include <GfxRenderer.h>
 #include <Logging.h>
 
-#include "BlePageTurnerActivity.h"
 #include "ButtonRemapActivity.h"
 #include "CalibreSettingsActivity.h"
 #include "ClearCacheActivity.h"

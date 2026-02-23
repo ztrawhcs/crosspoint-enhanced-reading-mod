@@ -113,7 +113,6 @@ class CrossPointSettings {
   char opdsServerUrl[128] = "";
   char opdsUsername[64] = "";
   char opdsPassword[64] = "";
-  char blePageTurnerMac[18] = "";
   uint8_t hideBatteryPercentage = HIDE_NEVER;
   uint8_t longPressChapterSkip = 1;
   uint8_t uiTheme = LYRA;
