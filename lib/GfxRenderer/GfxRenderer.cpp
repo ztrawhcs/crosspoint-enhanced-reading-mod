@@ -160,16 +160,8 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
   if (!utf8IsCombiningMark(cp)) {
     if constexpr (rotation == TextRotation::Rotated90CW) {
       *cursorY -= glyph->advanceX;
-      // CUSTOM TRACKING: Reduce spacing by 1px in forced bold mode
-      if (EpdFontFamily::globalForceBold && cp != ' ' && cp != 0x00A0) {
-        *cursorY += 1;
-      }
     } else {
       *cursorX += glyph->advanceX;
-      // CUSTOM TRACKING: Reduce spacing by 1px in forced bold mode
-      if (EpdFontFamily::globalForceBold && cp != ' ' && cp != 0x00A0) {
-        *cursorX -= 1;
-      }
     }
   }
 }
