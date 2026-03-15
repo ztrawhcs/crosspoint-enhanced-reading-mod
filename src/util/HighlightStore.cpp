@@ -186,7 +186,7 @@ static std::string bookFilePath(const std::string& title) {
 static constexpr const char* HIGHLIGHT_DELIM = "=== HIGHLIGHT ===";
 
 bool saveHighlight(const std::string& title, const std::string& author, int spineIndex,
-                   const std::string& chapterName, int currentPage, int totalPages,
+                   const std::string& chapterName, int startPage, int endPage, int totalPages,
                    float progressPercent, const std::string& highlightedText) {
   if (!ensureDir()) {
     LOG_ERR("HLS", "Failed to create highlights directory");
@@ -209,15 +209,21 @@ bool saveHighlight(const std::string& title, const std::string& author, int spin
   String newBlock;
   newBlock += HIGHLIGHT_DELIM;
   newBlock += "\n";
-  // Internal ref: spine index and 0-indexed page for matching on load
+  // Internal ref: spine.startPage-endPage (endPage == startPage for single-page highlights)
   newBlock += "Ref: ";
   newBlock += String(spineIndex);
   newBlock += ".";
-  newBlock += String(currentPage);
+  newBlock += String(startPage);
+  newBlock += "-";
+  newBlock += String(endPage);
   newBlock += "\n";
   newBlock += chapterDisplay;
   newBlock += " | Page ";
-  newBlock += String(currentPage + 1);
+  newBlock += String(startPage + 1);
+  if (endPage != startPage) {
+    newBlock += "-";
+    newBlock += String(endPage + 1);
+  }
   newBlock += " / ";
   newBlock += String(totalPages);
   newBlock += " | ";
@@ -280,9 +286,10 @@ std::vector<SavedHighlight> loadHighlightsForPage(const std::string& title, int 
 
     searchPos = blockStart;
 
-    // Parse the block — "Ref: spine.page" line gives the internal anchor
+    // Parse the block — "Ref: spine.startPage-endPage" gives the internal anchor
     int parsedSpine = -1;
-    int parsedPage = -1;
+    int parsedStartPage = -1;
+    int parsedEndPage = -1;
     std::string parsedText;
     bool inText = false;  // true once we've passed the header line(s) and blank line
 
@@ -294,12 +301,20 @@ std::vector<SavedHighlight> loadHighlightsForPage(const std::string& title, int 
       std::string line = block.substr(pos, eol - pos);
       pos = eol + 1;
 
-      // "Ref: N.M" is the internal anchor line (spine index + 0-indexed page)
+      // "Ref: N.S-E" is the internal anchor (spine, startPage, endPage)
+      // Legacy format "Ref: N.P" (no dash) treated as single-page
       if (line.rfind("Ref: ", 0) == 0) {
         size_t dotPos = line.find('.', 5);
         if (dotPos != std::string::npos) {
           parsedSpine = atoi(line.substr(5, dotPos - 5).c_str());
-          parsedPage = atoi(line.substr(dotPos + 1).c_str());
+          size_t dashPos = line.find('-', dotPos + 1);
+          if (dashPos != std::string::npos) {
+            parsedStartPage = atoi(line.substr(dotPos + 1, dashPos - dotPos - 1).c_str());
+            parsedEndPage = atoi(line.substr(dashPos + 1).c_str());
+          } else {
+            parsedStartPage = atoi(line.substr(dotPos + 1).c_str());
+            parsedEndPage = parsedStartPage;
+          }
         }
         headerLinesRead++;
         continue;
@@ -323,7 +338,7 @@ std::vector<SavedHighlight> loadHighlightsForPage(const std::string& title, int 
       }
     }
 
-    if (parsedSpine == spineIndex && parsedPage == page) {
+    if (parsedSpine == spineIndex && parsedStartPage <= page && page <= parsedEndPage) {
       // Trim trailing whitespace/newlines from text
       while (!parsedText.empty() && (parsedText.back() == '\n' || parsedText.back() == ' ')) {
         parsedText.pop_back();
@@ -331,7 +346,8 @@ std::vector<SavedHighlight> loadHighlightsForPage(const std::string& title, int 
       if (!parsedText.empty()) {
         SavedHighlight hl;
         hl.spineIndex = parsedSpine;
-        hl.page = parsedPage;
+        hl.startPage = parsedStartPage;
+        hl.endPage = parsedEndPage;
         hl.text = parsedText;
         results.push_back(hl);
       }
@@ -342,10 +358,19 @@ std::vector<SavedHighlight> loadHighlightsForPage(const std::string& title, int 
 }
 
 bool findHighlightBounds(const Page& page, const std::string& text,
+                         HighlightPageRole role,
                          int& outStartLine, int& outStartChar,
                          int& outEndLine, int& outEndChar) {
   auto lines = getTextLines(page);
   if (lines.empty() || text.empty()) return false;
+  const int lineCount = static_cast<int>(lines.size());
+
+  // MIDDLE: entire page is highlighted
+  if (role == HighlightPageRole::MIDDLE) {
+    outStartLine = 0; outStartChar = 0;
+    outEndLine = lineCount - 1; outEndChar = -1;
+    return true;
+  }
 
   // Extract first and last words from saved text
   auto firstNonSpace = text.find_first_not_of(" \t\r\n");
@@ -361,42 +386,37 @@ bool findHighlightBounds(const Page& page, const std::string& text,
                              ? text.substr(0, lastNonSpace + 1)
                              : text.substr(lastWordStart + 1, lastNonSpace - lastWordStart);
 
-  // Find start line + char offset of firstWord
-  int startLine = -1;
-  int startChar = 0;
-  for (int i = 0; i < static_cast<int>(lines.size()); i++) {
-    const auto& words = lines[i]->getBlock()->getWords();
-    int charOff = 0;
-    for (const auto& w : words) {
-      if (w == firstWord) {
-        startLine = i;
-        startChar = charOff;
-        break;
+  // Find start: FULL or START roles match first word; END role starts at page beginning
+  int startLine = 0, startChar = 0;
+  if (role == HighlightPageRole::FULL || role == HighlightPageRole::START) {
+    startLine = -1;
+    for (int i = 0; i < lineCount; i++) {
+      const auto& words = lines[i]->getBlock()->getWords();
+      int charOff = 0;
+      for (const auto& w : words) {
+        if (w == firstWord) { startLine = i; startChar = charOff; break; }
+        charOff += static_cast<int>(w.size()) + 1;
       }
-      charOff += static_cast<int>(w.size()) + 1;
+      if (startLine >= 0) break;
     }
-    if (startLine >= 0) break;
+    if (startLine < 0) return false;
   }
-  if (startLine < 0) return false;
 
-  // Find end line + char offset (one past last char of lastWord), searching back from page end
-  int endLine = -1;
-  int endChar = -1;
-  for (int i = static_cast<int>(lines.size()) - 1; i >= startLine; i--) {
-    const auto& words = lines[i]->getBlock()->getWords();
-    int charOff = 0;
-    int lastMatchEnd = -1;
-    for (const auto& w : words) {
-      if (w == lastWord) lastMatchEnd = charOff + static_cast<int>(w.size());
-      charOff += static_cast<int>(w.size()) + 1;
+  // Find end: FULL or END roles match last word; START role ends at page end
+  int endLine = lineCount - 1, endChar = -1;
+  if (role == HighlightPageRole::FULL || role == HighlightPageRole::END) {
+    endLine = -1;
+    for (int i = lineCount - 1; i >= startLine; i--) {
+      const auto& words = lines[i]->getBlock()->getWords();
+      int charOff = 0, lastMatchEnd = -1;
+      for (const auto& w : words) {
+        if (w == lastWord) lastMatchEnd = charOff + static_cast<int>(w.size());
+        charOff += static_cast<int>(w.size()) + 1;
+      }
+      if (lastMatchEnd >= 0) { endLine = i; endChar = lastMatchEnd; break; }
     }
-    if (lastMatchEnd >= 0) {
-      endLine = i;
-      endChar = lastMatchEnd;
-      break;
-    }
+    if (endLine < 0) { endLine = startLine; endChar = -1; }
   }
-  if (endLine < 0) { endLine = startLine; endChar = -1; }
 
   outStartLine = startLine;
   outStartChar = startChar;

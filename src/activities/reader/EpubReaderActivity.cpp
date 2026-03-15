@@ -368,35 +368,51 @@ void EpubReaderActivity::loop() {
         } else if (highlightState.mode == HighlightState::SELECT) {
           // Save highlight
           RenderLock lock(*this);
-          // Step 6: Extract highlighted text from the current page
+          // Extract highlighted text — may span two pages
           std::string extractedText;
+          int startPageIdx = section ? section->currentPage : 0;
+          int endPageIdx = (highlightState.selectionEndPage >= 0)
+                               ? highlightState.selectionEndPage
+                               : startPageIdx;
           if (section) {
-            auto extractPage = section->loadPageFromSectionFile();
-            if (extractPage) {
-              // Clamp selection to actual page line count
-              int textLineCount = HighlightStore::countTextLines(*extractPage);
-              int startLine = highlightState.selectionStartLine;
-              int endLine = highlightState.selectionEndLine;
-              if (startLine >= textLineCount) startLine = textLineCount - 1;
-              if (endLine >= textLineCount) endLine = textLineCount - 1;
-              if (startLine < 0) startLine = 0;
-              if (endLine < 0) endLine = 0;
-
-              extractedText = HighlightStore::extractText(
-                  *extractPage, startLine, highlightState.selectionStartCharOffset,
-                  endLine, highlightState.selectionEndCharOffset);
+            auto startPageObj = section->loadPageFromSectionFile();  // loads currentPage
+            if (startPageObj) {
+              int textLineCount = HighlightStore::countTextLines(*startPageObj);
+              int startLine = std::max(0, std::min(highlightState.selectionStartLine, textLineCount - 1));
+              if (endPageIdx == startPageIdx) {
+                int endLine = std::max(0, std::min(highlightState.selectionEndLine, textLineCount - 1));
+                extractedText = HighlightStore::extractText(
+                    *startPageObj, startLine, highlightState.selectionStartCharOffset,
+                    endLine, highlightState.selectionEndCharOffset);
+              } else {
+                // First part: start line to end of start page
+                extractedText = HighlightStore::extractText(
+                    *startPageObj, startLine, highlightState.selectionStartCharOffset,
+                    textLineCount - 1, -1);
+                // Second part: start of end page to end line
+                int savedPage = section->currentPage;
+                section->currentPage = endPageIdx;
+                auto endPageObj = section->loadPageFromSectionFile();
+                section->currentPage = savedPage;
+                if (endPageObj) {
+                  int endLineCount = HighlightStore::countTextLines(*endPageObj);
+                  int endLine = std::max(0, std::min(highlightState.selectionEndLine, endLineCount - 1));
+                  std::string endText = HighlightStore::extractText(
+                      *endPageObj, 0, 0, endLine, highlightState.selectionEndCharOffset);
+                  if (!endText.empty()) {
+                    if (!extractedText.empty()) extractedText += ' ';
+                    extractedText += endText;
+                  }
+                }
+              }
             }
           }
-          if (extractedText.empty()) {
-            extractedText = "[no text extracted]";
-          }
+          if (extractedText.empty()) extractedText = "[no text extracted]";
 
           // Gather metadata for save
           std::string chapterName = "";
           const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
-          if (tocIndex != -1) {
-            chapterName = epub->getTocItem(tocIndex).title;
-          }
+          if (tocIndex != -1) chapterName = epub->getTocItem(tocIndex).title;
           float bookProgress = 0.0f;
           if (epub && epub->getBookSize() > 0 && section && section->pageCount > 0) {
             const float chapterProgress =
@@ -405,7 +421,8 @@ void EpubReaderActivity::loop() {
           }
 
           HighlightStore::saveHighlight(epub->getTitle(), epub->getAuthor(), currentSpineIndex, chapterName,
-                                        section ? section->currentPage : 0, section ? section->pageCount : 0,
+                                        startPageIdx, endPageIdx,
+                                        section ? section->pageCount : 0,
                                         bookProgress, extractedText);
 
           highlightState.reset();
@@ -434,9 +451,10 @@ void EpubReaderActivity::loop() {
         highlightState.selectionEndLine = highlightState.cursorLineIndex;
         highlightState.selectionInitialized = true;
 
-        // Snap to sentence start; find sentence end even if it spans multiple lines
+        // Snap to sentence start; find sentence end, crossing to next page if needed
         highlightState.selectionStartCharOffset = 0;
         highlightState.selectionEndCharOffset = -1;
+        highlightState.selectionEndPage = section ? section->currentPage : -1;
         if (section) {
           auto tempPage = section->loadPageFromSectionFile();
           if (tempPage) {
@@ -446,13 +464,12 @@ void EpubReaderActivity::loop() {
             highlightState.selectionStartCharOffset =
                 HighlightStore::findFirstSentenceStart(startLineText);
 
-            // Search forward through lines for the first sentence-ending punctuation
+            // Search current page for sentence end
             bool foundEnd = false;
             for (int li = highlightState.selectionStartLine; li < lineCount && !foundEnd; li++) {
               std::string lineText = HighlightStore::getLineText(*tempPage, li);
               int searchFrom = (li == highlightState.selectionStartLine)
-                                   ? highlightState.selectionStartCharOffset
-                                   : 0;
+                                   ? highlightState.selectionStartCharOffset : 0;
               for (int ci = searchFrom; ci < (int)lineText.size(); ci++) {
                 char c = lineText[ci];
                 if (c == '.' || c == '!' || c == '?') {
@@ -460,6 +477,29 @@ void EpubReaderActivity::loop() {
                   highlightState.selectionEndCharOffset = ci + 1;
                   foundEnd = true;
                   break;
+                }
+              }
+            }
+            // If not found on current page, search the next page
+            if (!foundEnd && section->currentPage + 1 < section->pageCount) {
+              int savedPage = section->currentPage;
+              section->currentPage = savedPage + 1;
+              auto nextPage = section->loadPageFromSectionFile();
+              section->currentPage = savedPage;
+              if (nextPage) {
+                int nextLineCount = HighlightStore::countTextLines(*nextPage);
+                for (int li = 0; li < nextLineCount && !foundEnd; li++) {
+                  std::string lineText = HighlightStore::getLineText(*nextPage, li);
+                  for (int ci = 0; ci < (int)lineText.size(); ci++) {
+                    char c = lineText[ci];
+                    if (c == '.' || c == '!' || c == '?') {
+                      highlightState.selectionEndPage = savedPage + 1;
+                      highlightState.selectionEndLine = li;
+                      highlightState.selectionEndCharOffset = ci + 1;
+                      foundEnd = true;
+                      break;
+                    }
+                  }
                 }
               }
             }
@@ -480,9 +520,64 @@ void EpubReaderActivity::loop() {
       if (highlightState.mode == HighlightState::INACTIVE) {
         pendingPowerPageTurn = true;
       }
-      // If SELECT: single Power tap does nothing (only double-tap saves)
+      // If SELECT: single Power tap advances to the next sentence (cross-page if needed)
       if (highlightState.mode == HighlightState::SELECT) {
-        return;  // consume the event
+        RenderLock lock(*this);
+        if (section) {
+          int curEndPage = (highlightState.selectionEndPage >= 0)
+                               ? highlightState.selectionEndPage
+                               : section->currentPage;
+          int savedPage = section->currentPage;
+          section->currentPage = curEndPage;
+          auto tempPage = section->loadPageFromSectionFile();
+          section->currentPage = savedPage;
+          if (tempPage) {
+            const int lineCount = HighlightStore::countTextLines(*tempPage);
+            int searchLine = highlightState.selectionEndLine;
+            int searchChar = (highlightState.selectionEndCharOffset == -1)
+                                 ? static_cast<int>(
+                                       HighlightStore::getLineText(*tempPage, searchLine).size())
+                                 : highlightState.selectionEndCharOffset;
+            bool found = false;
+            for (int li = searchLine; li < lineCount && !found; li++) {
+              std::string lineText = HighlightStore::getLineText(*tempPage, li);
+              int ci = (li == searchLine) ? searchChar : 0;
+              for (; ci < static_cast<int>(lineText.size()); ci++) {
+                char c = lineText[ci];
+                if (c == '.' || c == '!' || c == '?') {
+                  highlightState.selectionEndPage = curEndPage;
+                  highlightState.selectionEndLine = li;
+                  highlightState.selectionEndCharOffset = ci + 1;
+                  found = true;
+                  break;
+                }
+              }
+            }
+            if (!found && curEndPage + 1 < section->pageCount) {
+              section->currentPage = curEndPage + 1;
+              auto nextPage = section->loadPageFromSectionFile();
+              section->currentPage = savedPage;
+              if (nextPage) {
+                int nextLineCount = HighlightStore::countTextLines(*nextPage);
+                for (int li = 0; li < nextLineCount && !found; li++) {
+                  std::string lineText = HighlightStore::getLineText(*nextPage, li);
+                  for (int ci = 0; ci < (int)lineText.size(); ci++) {
+                    char c = lineText[ci];
+                    if (c == '.' || c == '!' || c == '?') {
+                      highlightState.selectionEndPage = curEndPage + 1;
+                      highlightState.selectionEndLine = li;
+                      highlightState.selectionEndCharOffset = ci + 1;
+                      found = true;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        requestUpdate();
+        return;
       }
     }
   }  // if (SETTINGS.highlightModeEnabled)
@@ -546,20 +641,24 @@ void EpubReaderActivity::loop() {
         return;
       }
 
-      // BTN_DOWN extends selection to the end of the next full sentence
+      // BTN_DOWN extends selection to the end of the next full sentence (cross-page if needed)
       if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
         RenderLock lock(*this);
         if (section) {
+          int curEndPage = (highlightState.selectionEndPage >= 0)
+                               ? highlightState.selectionEndPage
+                               : section->currentPage;
+          int savedPage = section->currentPage;
+          section->currentPage = curEndPage;
           auto tempPage = section->loadPageFromSectionFile();
+          section->currentPage = savedPage;
           if (tempPage) {
             const int lineCount = HighlightStore::countTextLines(*tempPage);
-            // Start searching just past the current sentence end
             int searchLine = highlightState.selectionEndLine;
             int searchChar = (highlightState.selectionEndCharOffset == -1)
                                  ? static_cast<int>(
                                        HighlightStore::getLineText(*tempPage, searchLine).size())
                                  : highlightState.selectionEndCharOffset;
-
             bool found = false;
             for (int li = searchLine; li < lineCount && !found; li++) {
               std::string lineText = HighlightStore::getLineText(*tempPage, li);
@@ -567,6 +666,7 @@ void EpubReaderActivity::loop() {
               for (; ci < static_cast<int>(lineText.size()); ci++) {
                 char c = lineText[ci];
                 if (c == '.' || c == '!' || c == '?') {
+                  highlightState.selectionEndPage = curEndPage;
                   highlightState.selectionEndLine = li;
                   highlightState.selectionEndCharOffset = ci + 1;
                   found = true;
@@ -574,15 +674,32 @@ void EpubReaderActivity::loop() {
                 }
               }
             }
-            // If no sentence end found on page, extend to end of last line
-            if (!found) {
-              highlightState.selectionEndLine = lineCount - 1;
-              highlightState.selectionEndCharOffset = -1;
+            if (!found && curEndPage + 1 < section->pageCount) {
+              section->currentPage = curEndPage + 1;
+              auto nextPage = section->loadPageFromSectionFile();
+              section->currentPage = savedPage;
+              if (nextPage) {
+                int nextLineCount = HighlightStore::countTextLines(*nextPage);
+                for (int li = 0; li < nextLineCount && !found; li++) {
+                  std::string lineText = HighlightStore::getLineText(*nextPage, li);
+                  for (int ci = 0; ci < (int)lineText.size(); ci++) {
+                    char c = lineText[ci];
+                    if (c == '.' || c == '!' || c == '?') {
+                      highlightState.selectionEndPage = curEndPage + 1;
+                      highlightState.selectionEndLine = li;
+                      highlightState.selectionEndCharOffset = ci + 1;
+                      found = true;
+                      break;
+                    }
+                  }
+                }
+              }
             }
           }
         }
-        LOG_DBG("ERS", "Highlight select extended → end line %d (endChar=%d)",
-                highlightState.selectionEndLine, highlightState.selectionEndCharOffset);
+        LOG_DBG("ERS", "Highlight select extended → page=%d line=%d char=%d",
+                highlightState.selectionEndPage, highlightState.selectionEndLine,
+                highlightState.selectionEndCharOffset);
         requestUpdate();
         return;
       }
@@ -1539,15 +1656,17 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     const int fontId = SETTINGS.getReaderFontId();
     const int textLineCount = HighlightStore::countTextLines(*page);
 
-    // Step 7: Draw "HL" mode indicator at top-right corner
+    // Step 7: Draw a 2px border around the content area to signal highlight mode
     {
-      const char* modeLabel = (highlightState.mode == HighlightState::CURSOR) ? "HL" : "SEL";
-      const int labelWidth = renderer.getTextWidth(SMALL_FONT_ID, modeLabel);
-      const int labelX = renderer.getScreenWidth() - orientedMarginRight - labelWidth - 2;
-      const int labelY = orientedMarginTop - 14;  // just above content area
-      // Draw inverted badge: white text on black background
-      renderer.fillRect(labelX - 3, labelY - 1, labelWidth + 6, 14, true);
-      renderer.drawText(SMALL_FONT_ID, labelX, labelY, modeLabel, false);  // white text
+      const int bx = orientedMarginLeft - 2;
+      const int by = orientedMarginTop - 2;
+      const int bw = renderer.getScreenWidth() - orientedMarginLeft - orientedMarginRight + 4;
+      const int bh = renderer.getScreenHeight() - orientedMarginTop - orientedMarginBottom + 4;
+      const bool ink = !isNightMode;
+      renderer.fillRect(bx, by, bw, 2, ink);                    // top
+      renderer.fillRect(bx, by + bh - 2, bw, 2, ink);           // bottom
+      renderer.fillRect(bx, by, 2, bh, ink);                    // left
+      renderer.fillRect(bx + bw - 2, by, 2, bh, ink);           // right
     }
 
     if (highlightState.mode == HighlightState::CURSOR && textLineCount > 0) {
@@ -1592,7 +1711,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     } else if (highlightState.mode == HighlightState::SELECT && textLineCount > 0) {
       // Draw inverted highlight over the selected range
       int startLine = highlightState.selectionStartLine;
-      int endLine = highlightState.selectionEndLine;
+      // If the selection ends on a later page, highlight to end of this page
+      const bool endOnLaterPage = section &&
+                                  highlightState.selectionEndPage > section->currentPage;
+      int endLine = endOnLaterPage ? (textLineCount - 1) : highlightState.selectionEndLine;
       if (startLine < 0) startLine = 0;
       if (endLine >= textLineCount) endLine = textLineCount - 1;
 
@@ -1626,9 +1748,8 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
           barX = orientedMarginLeft + startPx;
           barW = (renderer.getScreenWidth() - orientedMarginRight) - barX;
         }
-        // For end line: trim right edge — bar ends just before the word AFTER endChar,
-        // so the full last word of the sentence is included in the highlight
-        if (lineIdx == endLine && highlightState.selectionEndCharOffset != -1 &&
+        // For end line: trim right edge (only if end is on this page)
+        if (!endOnLaterPage && lineIdx == endLine && highlightState.selectionEndCharOffset != -1 &&
             highlightState.selectionEndCharOffset > 0) {
           int endPx = charOffsetToEndPixel(pl, highlightState.selectionEndCharOffset);
           if (endPx >= 0) {
@@ -1666,8 +1787,15 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         epub->getTitle(), currentSpineIndex, currentPageIdx);
 
     for (const auto& hl : savedHighlights) {
+      // Determine this page's role within a possibly multi-page highlight
+      HighlightStore::HighlightPageRole hlRole = HighlightStore::HighlightPageRole::FULL;
+      if (hl.startPage != hl.endPage) {
+        if (currentPageIdx == hl.startPage)      hlRole = HighlightStore::HighlightPageRole::START;
+        else if (currentPageIdx == hl.endPage)   hlRole = HighlightStore::HighlightPageRole::END;
+        else                                     hlRole = HighlightStore::HighlightPageRole::MIDDLE;
+      }
       int startLine = 0, startChar = 0, endLine = 0, endChar = -1;
-      if (!HighlightStore::findHighlightBounds(*page, hl.text, startLine, startChar, endLine, endChar)) continue;
+      if (!HighlightStore::findHighlightBounds(*page, hl.text, hlRole, startLine, startChar, endLine, endChar)) continue;
       const int textLineCount = HighlightStore::countTextLines(*page);
       if (startLine < 0) startLine = 0;
       if (endLine >= textLineCount) endLine = textLineCount - 1;

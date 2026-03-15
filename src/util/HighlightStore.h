@@ -15,8 +15,17 @@ constexpr const char* HIGHLIGHT_DIR = "/highlights";
 
 struct SavedHighlight {
   int spineIndex;
-  int page;  // 0-indexed chapter page
+  int startPage;  // 0-indexed chapter page where highlight begins
+  int endPage;    // 0-indexed chapter page where highlight ends (== startPage for single-page)
   std::string text;
+};
+
+// Role of the current page within a multi-page highlight
+enum class HighlightPageRole {
+  FULL,    // highlight is entirely on this page
+  START,   // this is the first page; highlight continues onto next page(s)
+  MIDDLE,  // this is an intermediate page; entire page is highlighted
+  END,     // this is the last page; highlight started on a previous page
 };
 
 /**
@@ -39,18 +48,19 @@ bool ensureDir();
  * @return true on success
  */
 bool saveHighlight(const std::string& title, const std::string& author, int spineIndex,
-                   const std::string& chapterName, int currentPage, int totalPages,
+                   const std::string& chapterName, int startPage, int endPage, int totalPages,
                    float progressPercent, const std::string& highlightedText);
 
 /**
- * Find the precise bounds of a saved highlight on a page, by matching
- * the first and last words of the highlight text against the page lines.
- * Returns start/end line indices AND char offsets within those lines,
- * suitable for trimmed bar rendering identical to the live SELECT renderer.
+ * Find the precise bounds of a saved highlight on a page.
+ * role controls which end(s) are matched: FULL matches both first and last word;
+ * START matches only the first word (end = full page right); END matches only the
+ * last word (start = full page left); MIDDLE returns full-page bounds.
  * outEndChar is one-past the last character of the last word (-1 = full line).
  * Returns false if no match found.
  */
 bool findHighlightBounds(const Page& page, const std::string& text,
+                         HighlightPageRole role,
                          int& outStartLine, int& outStartChar,
                          int& outEndLine, int& outEndChar);
 
