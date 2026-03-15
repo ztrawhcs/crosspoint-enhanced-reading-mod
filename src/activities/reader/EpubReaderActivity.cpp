@@ -460,17 +460,63 @@ void EpubReaderActivity::loop() {
           auto tempPage = section->loadPageFromSectionFile();
           if (tempPage) {
             int lineCount = HighlightStore::countTextLines(*tempPage);
-            std::string startLineText =
-                HighlightStore::getLineText(*tempPage, highlightState.cursorLineIndex);
-            highlightState.selectionStartCharOffset =
-                HighlightStore::findFirstSentenceStart(startLineText);
 
-            // Search current page for sentence end
+            // Find the actual sentence start — may be on a previous line if cursor is mid-sentence
+            int selStartLine = highlightState.cursorLineIndex;
+            int selStartChar = 0;
+            {
+              std::string curLineText = HighlightStore::getLineText(*tempPage, selStartLine);
+              int fss = HighlightStore::findFirstSentenceStart(curLineText);
+              if (fss > 0) {
+                // Sentence boundary found within this line — start there
+                selStartChar = fss;
+              } else {
+                // Check whether the previous line ends a sentence (making pos 0 a valid start)
+                bool prevEndsSentence = (selStartLine == 0);
+                if (!prevEndsSentence) {
+                  std::string prevLine = HighlightStore::getLineText(*tempPage, selStartLine - 1);
+                  int lastNS = (int)prevLine.size() - 1;
+                  while (lastNS >= 0 && prevLine[lastNS] == ' ') lastNS--;
+                  if (lastNS >= 0) {
+                    char c = prevLine[lastNS];
+                    prevEndsSentence = (c == '.' || c == '!' || c == '?');
+                  }
+                }
+                if (!prevEndsSentence) {
+                  // Cursor is mid-sentence — walk back to find where this sentence began
+                  bool foundSentStart = false;
+                  for (int li = selStartLine - 1; li >= 0 && !foundSentStart; li--) {
+                    std::string lineText = HighlightStore::getLineText(*tempPage, li);
+                    int sentEnd = HighlightStore::findLastSentenceEnd(lineText);
+                    if (sentEnd > 0) {
+                      int nextStart = sentEnd;
+                      while (nextStart < (int)lineText.size() && lineText[nextStart] == ' ') nextStart++;
+                      if (nextStart < (int)lineText.size()) {
+                        selStartLine = li;
+                        selStartChar = nextStart;
+                      } else {
+                        selStartLine = li + 1;
+                        selStartChar = 0;
+                      }
+                      foundSentStart = true;
+                    }
+                  }
+                  if (!foundSentStart) {
+                    selStartLine = 0;
+                    selStartChar = 0;
+                  }
+                }
+              }
+            }
+            highlightState.selectionStartLine = selStartLine;
+            highlightState.selectionStartCharOffset = selStartChar;
+            highlightState.selectionEndLine = selStartLine;
+
+            // Search current page for sentence end (from the snapped start position)
             bool foundEnd = false;
-            for (int li = highlightState.selectionStartLine; li < lineCount && !foundEnd; li++) {
+            for (int li = selStartLine; li < lineCount && !foundEnd; li++) {
               std::string lineText = HighlightStore::getLineText(*tempPage, li);
-              int searchFrom = (li == highlightState.selectionStartLine)
-                                   ? highlightState.selectionStartCharOffset : 0;
+              int searchFrom = (li == selStartLine) ? selStartChar : 0;
               for (int ci = searchFrom; ci < (int)lineText.size(); ci++) {
                 char c = lineText[ci];
                 if (c == '.' || c == '!' || c == '?') {
@@ -647,18 +693,19 @@ void EpubReaderActivity::loop() {
         return;
       }
 
-      // BTN_DOWN extends selection to the end of the next full sentence (cross-page if needed)
+      // BTN_DOWN extends selection by 3 sentences per press (cross-page if needed)
       if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
         RenderLock lock(*this);
         if (section) {
-          int curEndPage = (highlightState.selectionEndPage >= 0)
-                               ? highlightState.selectionEndPage
-                               : section->currentPage;
-          int savedPage = section->currentPage;
-          section->currentPage = curEndPage;
-          auto tempPage = section->loadPageFromSectionFile();
-          section->currentPage = savedPage;
-          if (tempPage) {
+          for (int step = 0; step < 3; step++) {
+            int curEndPage = (highlightState.selectionEndPage >= 0)
+                                 ? highlightState.selectionEndPage
+                                 : section->currentPage;
+            int savedPage = section->currentPage;
+            section->currentPage = curEndPage;
+            auto tempPage = section->loadPageFromSectionFile();
+            section->currentPage = savedPage;
+            if (!tempPage) break;
             const int lineCount = HighlightStore::countTextLines(*tempPage);
             int searchLine = highlightState.selectionEndLine;
             int searchChar = (highlightState.selectionEndCharOffset == -1)
@@ -701,6 +748,7 @@ void EpubReaderActivity::loop() {
                 }
               }
             }
+            if (!found) break;
           }
         }
         LOG_DBG("ERS", "Highlight select extended → page=%d line=%d char=%d",
@@ -1789,8 +1837,11 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         auto wordIt = words.begin();
         auto xposIt = xpositions.begin();
         for (size_t w = 0; w < words.size(); w++) {
-          renderer.drawText(fontId, *xposIt + orientedMarginLeft,
-                            pl->yPos + orientedMarginTop, wordIt->c_str(), isNightMode);
+          int wordAbsX = *xposIt + orientedMarginLeft;
+          // Only draw words that fall within the highlight bar — avoids inverted-text bleed
+          if (wordAbsX >= barX && wordAbsX < barX + barW) {
+            renderer.drawText(fontId, wordAbsX, pl->yPos + orientedMarginTop, wordIt->c_str(), isNightMode);
+          }
           ++wordIt;
           ++xposIt;
         }
@@ -1862,8 +1913,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         auto wordIt = words.begin();
         auto xposIt = xpositions.begin();
         for (size_t w = 0; w < words.size(); w++) {
-          renderer.drawText(fontId, *xposIt + orientedMarginLeft,
-                            pl->yPos + orientedMarginTop, wordIt->c_str(), isNightMode);
+          int wordAbsX = *xposIt + orientedMarginLeft;
+          if (wordAbsX >= barX && wordAbsX < barX + barW) {
+            renderer.drawText(fontId, wordAbsX, pl->yPos + orientedMarginTop, wordIt->c_str(), isNightMode);
+          }
           ++wordIt;
           ++xposIt;
         }
