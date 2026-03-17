@@ -2129,7 +2129,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 
   renderer.storeBwBuffer();
 
-  if (SETTINGS.textAntiAliasing && !showHelpOverlay && !isNightMode) {
+  // Skip anti-aliasing in highlight mode: the extra grayscale passes add ~200ms per line
+  // transition with no visual benefit for the highlight overlay. Use the fast BW path instead.
+  const bool inHighlightMode = (highlightState.mode != HighlightState::INACTIVE);
+  if (SETTINGS.textAntiAliasing && !showHelpOverlay && !isNightMode && !inHighlightMode) {
     renderer.clearScreen(0x00);
 
     // TURN ON BOLD FOR GRAYSCALE PASSES
@@ -2156,7 +2159,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   renderer.restoreBwBuffer();
   // If anti-aliasing ran, it wiped highlights from the display. The BW buffer (restored above)
   // still has the highlights — do one fast refresh to put them back on screen.
-  if (drewHighlights && SETTINGS.textAntiAliasing && !showHelpOverlay && !isNightMode) {
+  // (This path is only reached when !inHighlightMode, so drewHighlights here means persisted
+  // saved-highlight bars drawn over regular reading — not the active cursor/selection overlay.)
+  if (drewHighlights && SETTINGS.textAntiAliasing && !showHelpOverlay && !isNightMode && !inHighlightMode) {
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
   }
 }
