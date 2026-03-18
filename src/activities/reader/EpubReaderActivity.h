@@ -9,7 +9,7 @@
 struct HighlightState {
   enum Mode { INACTIVE, CURSOR, SELECT };
   Mode mode = INACTIVE;
-  int cursorLineIndex = 0;        // which PageLine (text-only) the cursor is on
+  int cursorLineIndex = 0;  // which PageLine (text-only) the cursor is on
   int selectionStartLine = 0;
   int selectionStartCharOffset = 0;
   int selectionEndLine = 0;
@@ -51,7 +51,8 @@ class EpubReaderActivity final : public ActivityWithSubactivity {
   bool skipNextButtonCheck = false;     // Skip button processing for one frame after subactivity exit
   // --- HIGHLIGHT MODE ---
   HighlightState highlightState;
-  int previousSpineIndex = -1;          // Track spine changes for force-exit
+  int previousSpineIndex = -1;   // Track spine changes for force-exit
+  int highlightCachedPage = -1;  // Page index cached in BW buffer for fast cursor moves
   // --- HIGHLIGHT MODE ---
   const std::function<void()> onGoBack;
   const std::function<void()> onGoHome;

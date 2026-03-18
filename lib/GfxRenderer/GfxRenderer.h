@@ -75,6 +75,7 @@ class GfxRenderer {
   int getScreenWidth() const;
   int getScreenHeight() const;
   void displayBuffer(HalDisplay::RefreshMode refreshMode = HalDisplay::FAST_REFRESH) const;
+  void displayHighlightBuffer() const;
   // EXPERIMENTAL: Windowed update - display only a rectangular region
   // void displayWindow(int x, int y, int width, int height) const;
   void invertScreen() const;
@@ -127,8 +128,10 @@ class GfxRenderer {
   void copyGrayscaleLsbBuffers() const;
   void copyGrayscaleMsbBuffers() const;
   void displayGrayBuffer() const;
-  bool storeBwBuffer();    // Returns true if buffer was stored successfully
-  void restoreBwBuffer();  // Restore and free the stored buffer
+  bool storeBwBuffer();            // Returns true if buffer was stored successfully
+  void restoreBwBuffer();          // Restore and free the stored buffer
+  bool restoreBwBufferKeep();      // Restore from stored buffer WITHOUT freeing (keeps cache for reuse)
+  bool hasBwBufferStored() const;  // Check if a stored buffer exists
   void cleanupGrayscaleWithFrameBuffer() const;
 
   // Font helpers

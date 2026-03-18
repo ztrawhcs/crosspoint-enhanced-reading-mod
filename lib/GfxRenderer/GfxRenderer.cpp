@@ -835,6 +835,12 @@ void GfxRenderer::displayBuffer(const HalDisplay::RefreshMode refreshMode) const
   display.displayBuffer(refreshMode, fadingFix);
 }
 
+void GfxRenderer::displayHighlightBuffer() const {
+  auto elapsed = millis() - start_ms;
+  LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayHighlightBuffer", elapsed);
+  display.displayHighlightBuffer(fadingFix);
+}
+
 std::string GfxRenderer::truncatedText(const int fontId, const char* text, const int maxWidth,
                                        const EpdFontFamily::Style style) const {
   if (!text || maxWidth <= 0) return "";
@@ -1092,6 +1098,20 @@ void GfxRenderer::restoreBwBuffer() {
   freeBwBufferChunks();
   LOG_DBG("GFX", "Restored and freed BW buffer chunks");
 }
+
+bool GfxRenderer::restoreBwBufferKeep() {
+  for (const auto& bwBufferChunk : bwBufferChunks) {
+    if (!bwBufferChunk) return false;
+  }
+
+  for (size_t i = 0; i < BW_BUFFER_NUM_CHUNKS; i++) {
+    const size_t offset = i * BW_BUFFER_CHUNK_SIZE;
+    memcpy(frameBuffer + offset, bwBufferChunks[i], BW_BUFFER_CHUNK_SIZE);
+  }
+  return true;
+}
+
+bool GfxRenderer::hasBwBufferStored() const { return bwBufferChunks[0] != nullptr; }
 
 /**
  * Cleanup grayscale buffers using the current frame buffer.
