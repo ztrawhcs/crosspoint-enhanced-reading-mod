@@ -20,5 +20,5 @@ void BootActivity::onEnter() {
   renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + 95, tr(STR_BOOTING));
   // Custom Version Number
   renderer.drawCenteredText(SMALL_FONT_ID, pageHeight - 30, "ztrawhcs version 2.5.0");
-  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  renderer.displayBuffer();
 }

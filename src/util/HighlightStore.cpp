@@ -380,7 +380,11 @@ std::vector<SavedHighlight> loadHighlightsForPage(const std::string& title, int 
       }
     }
 
-    if (parsedSpine == spineIndex && parsedStartPage <= page && page <= parsedEndPage) {
+    // Match on spine index only — don't filter by page number. Font size or layout
+    // changes reflow text to different pages, so the saved page numbers may be stale.
+    // The caller uses findHighlightBounds() to check if the text actually appears on
+    // the current page, so returning extra candidates here is safe.
+    if (parsedSpine == spineIndex) {
       // Trim trailing whitespace/newlines from text
       while (!parsedText.empty() && (parsedText.back() == '\n' || parsedText.back() == ' ')) {
         parsedText.pop_back();

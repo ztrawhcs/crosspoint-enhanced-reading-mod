@@ -465,17 +465,9 @@ void EpubReaderActivity::loop() {
             auto savedHighlights =
                 HighlightStore::loadHighlightsForPage(epub->getTitle(), currentSpineIndex, curPageIdx);
             for (const auto& hl : savedHighlights) {
-              HighlightStore::HighlightPageRole hlRole = HighlightStore::HighlightPageRole::FULL;
-              if (hl.startPage != hl.endPage) {
-                if (curPageIdx == hl.startPage)
-                  hlRole = HighlightStore::HighlightPageRole::START;
-                else if (curPageIdx == hl.endPage)
-                  hlRole = HighlightStore::HighlightPageRole::END;
-                else
-                  hlRole = HighlightStore::HighlightPageRole::MIDDLE;
-              }
               int sl = 0, sc = 0, el = 0, ec = -1;
-              if (HighlightStore::findHighlightBounds(*curPage, hl.text, hlRole, sl, sc, el, ec)) {
+              if (HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::FULL, sl,
+                                                      sc, el, ec)) {
                 if (cursorLine >= sl && cursorLine <= el) {
                   HighlightStore::deleteHighlight(epub->getTitle(), hl.spineIndex, hl.startPage, hl.endPage);
                   deletedHighlight = true;
@@ -2053,18 +2045,16 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     auto savedHighlights = HighlightStore::loadHighlightsForPage(epub->getTitle(), currentSpineIndex, currentPageIdx);
 
     for (const auto& hl : savedHighlights) {
-      // Determine this page's role within a possibly multi-page highlight
-      HighlightStore::HighlightPageRole hlRole = HighlightStore::HighlightPageRole::FULL;
-      if (hl.startPage != hl.endPage) {
-        if (currentPageIdx == hl.startPage)
-          hlRole = HighlightStore::HighlightPageRole::START;
-        else if (currentPageIdx == hl.endPage)
-          hlRole = HighlightStore::HighlightPageRole::END;
-        else
-          hlRole = HighlightStore::HighlightPageRole::MIDDLE;
-      }
+      // Try FULL first (both first and last word on this page), then START (first word
+      // here, continues to next page), then END (last word here, started on previous page).
+      // This handles highlights that span pages after font size / layout changes.
       int startLine = 0, startChar = 0, endLine = 0, endChar = -1;
-      if (!HighlightStore::findHighlightBounds(*page, hl.text, hlRole, startLine, startChar, endLine, endChar))
+      if (!HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::FULL, startLine,
+                                               startChar, endLine, endChar) &&
+          !HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::START, startLine,
+                                               startChar, endLine, endChar) &&
+          !HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::END, startLine,
+                                               startChar, endLine, endChar))
         continue;
       const int textLineCount = HighlightStore::countTextLines(*page);
       if (startLine < 0) startLine = 0;
