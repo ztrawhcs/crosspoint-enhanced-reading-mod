@@ -58,6 +58,7 @@ Saved highlights are stored as human-readable text files on the SD card in the `
 
 ## Additional Features
 
+- **Gray background fix** — The stock firmware's first screen refresh after power-on uses a waveform that under-drives the e-ink particles, leaving a faint gray tint across the display until the next full refresh clears it. This mod forces a full waveform on the boot screen so every pixel settles cleanly to white from the start.
 - **Portrait button swap** — Choose whether the front or side buttons handle page turns when reading in portrait
 - **Landscape button swap** — The same option for landscape orientation
 - **Hardware Bold toggle** — Load native bold font files for better readability in changing lighting conditions
