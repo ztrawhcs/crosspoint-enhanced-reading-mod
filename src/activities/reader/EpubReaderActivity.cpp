@@ -469,11 +469,15 @@ void EpubReaderActivity::loop() {
               // Use the same role chain as rendering to verify this highlight is actually
               // visible on the current page. This prevents deleting the wrong highlight
               // when multiple highlights share a chapter and FULL matching fails.
-              bool isMultiPage = (hl.startPage != hl.endPage);
+              // MIDDLE only fires for pages strictly between startPage and endPage.
+              // For a 2-page highlight (startPage=X, endPage=X+1) the end page is NOT a
+              // middle page, so MIDDLE must not fire there — otherwise it returns full-page
+              // bounds and END is never reached, producing a phantom full-page highlight.
+              bool isActuallyMiddle = (hl.startPage != hl.endPage && curPageIdx > hl.startPage && curPageIdx < hl.endPage);
               bool hlOnPage =
                   HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::FULL, sl, sc, el, ec) ||
                   HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::START, sl, sc, el, ec) ||
-                  (isMultiPage && HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::MIDDLE, sl, sc, el, ec)) ||
+                  (isActuallyMiddle && HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::MIDDLE, sl, sc, el, ec)) ||
                   HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::END, sl, sc, el, ec);
               if (!hlOnPage) continue;  // not visible on this page — skip
               if (cursorLine >= sl && cursorLine <= el) {
@@ -812,11 +816,11 @@ void EpubReaderActivity::loop() {
           // Prevents wiping valid highlights on other pages of the same chapter.
           if (chordPage) {
             int sl, sc, el, ec;
-            bool isMultiPage = (hl.startPage != hl.endPage);
+            bool isActuallyMiddle = (hl.startPage != hl.endPage && curPageIdx > hl.startPage && curPageIdx < hl.endPage);
             bool visible =
                 HighlightStore::findHighlightBounds(*chordPage, hl.text, HighlightStore::HighlightPageRole::FULL, sl, sc, el, ec) ||
                 HighlightStore::findHighlightBounds(*chordPage, hl.text, HighlightStore::HighlightPageRole::START, sl, sc, el, ec) ||
-                (isMultiPage && HighlightStore::findHighlightBounds(*chordPage, hl.text, HighlightStore::HighlightPageRole::MIDDLE, sl, sc, el, ec)) ||
+                (isActuallyMiddle && HighlightStore::findHighlightBounds(*chordPage, hl.text, HighlightStore::HighlightPageRole::MIDDLE, sl, sc, el, ec)) ||
                 HighlightStore::findHighlightBounds(*chordPage, hl.text, HighlightStore::HighlightPageRole::END, sl, sc, el, ec);
             if (!visible) continue;
           }
@@ -982,7 +986,12 @@ void EpubReaderActivity::loop() {
           mappedInput.getHeldTime() < highlightLongPressMs) {
         RenderLock lock(*this);
         if (highlightState.selectionStartCharOffset > 0 && section) {
+          // Load the start page, not the current view page — view may have been turned to
+          // selectionEndPage after the user extended the selection with Down.
+          int savedPage = section->currentPage;
+          if (highlightState.selectionStartPage >= 0) section->currentPage = highlightState.selectionStartPage;
           auto tempPage = section->loadPageFromSectionFile();
+          section->currentPage = savedPage;
           if (tempPage) {
             std::string lineText = HighlightStore::getLineText(*tempPage, highlightState.selectionStartLine);
             int off = highlightState.selectionStartCharOffset - 1;
@@ -998,7 +1007,10 @@ void EpubReaderActivity::loop() {
           highlightState.selectionStartCharOffset--;
         } else if (highlightState.selectionStartLine > 0 && section) {
           // At start of line — cross to last word of previous line
+          int savedPage = section->currentPage;
+          if (highlightState.selectionStartPage >= 0) section->currentPage = highlightState.selectionStartPage;
           auto tempPage = section->loadPageFromSectionFile();
+          section->currentPage = savedPage;
           if (tempPage) {
             highlightState.selectionStartLine--;
             std::string prevLine = HighlightStore::getLineText(*tempPage, highlightState.selectionStartLine);
@@ -1017,7 +1029,12 @@ void EpubReaderActivity::loop() {
       if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
         RenderLock lock(*this);
         if (section) {
+          // Load the start page, not the current view page — view may have been turned to
+          // selectionEndPage after the user extended the selection with Down.
+          int savedPage = section->currentPage;
+          if (highlightState.selectionStartPage >= 0) section->currentPage = highlightState.selectionStartPage;
           auto tempPage = section->loadPageFromSectionFile();
+          section->currentPage = savedPage;
           if (tempPage) {
             std::string lineText = HighlightStore::getLineText(*tempPage, highlightState.selectionStartLine);
             int off = highlightState.selectionStartCharOffset;
@@ -2103,13 +2120,17 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       // Only attempt MIDDLE (entire-page highlight) for highlights that were originally
       // multi-page. Single-page highlights that reflow to a different page would otherwise
       // unconditionally match MIDDLE and ghost-highlight an unrelated page.
-      bool isMultiPage = (hl.startPage != hl.endPage);
+      // MIDDLE only fires for pages strictly between startPage and endPage.
+      // For a 2-page highlight the end page is NOT a middle page — without this guard
+      // MIDDLE would unconditionally return full-page bounds before END gets a chance,
+      // causing the entire end page to appear highlighted instead of just the sentence end.
+      bool isActuallyMiddle = (hl.startPage != hl.endPage && currentPageIdx > hl.startPage && currentPageIdx < hl.endPage);
       if (!HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::FULL, startLine,
                                                startChar, endLine, endChar) &&
           !HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::START, startLine,
                                                startChar, endLine, endChar) &&
-          !(isMultiPage && HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::MIDDLE,
-                                                               startLine, startChar, endLine, endChar)) &&
+          !(isActuallyMiddle && HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::MIDDLE,
+                                                                    startLine, startChar, endLine, endChar)) &&
           !HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::END, startLine,
                                                startChar, endLine, endChar))
         continue;
@@ -2197,10 +2218,11 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
                   "HIGHLIGHT MODE\n"
                   "2x Pwr: Enter/Save\n"
                   "Up/Down: Move cursor\n"
-                  "1x Pwr: Select sentence\n"
+                  "1x Pwr: Sel / Del highlight\n"
                   "1x Pwr: Next sentence\n"
                   "Down: Extend selection\n"
                   "L/R rocker: Fine adjust\n"
+                  "L+R: Clear page highlights\n"
                   "Hold Back: Cancel",
                   BoxAlign::CENTER, overlayFontId, overlayLineHeight);
     }
