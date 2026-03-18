@@ -426,26 +426,59 @@ bool findHighlightBounds(const Page& page, const std::string& text, HighlightPag
                               ? text.substr(firstNonSpace)
                               : text.substr(firstNonSpace, firstWordEnd - firstNonSpace);
 
+  // Extract second word for phrase matching — prevents common words ("The", "He", "a") from
+  // matching on unrelated pages when highlights reflow after font-size changes
+  std::string secondWord;
+  if (firstWordEnd != std::string::npos) {
+    size_t secondWordStart = text.find_first_not_of(' ', firstWordEnd);
+    if (secondWordStart != std::string::npos) {
+      size_t secondWordEnd = text.find(' ', secondWordStart);
+      secondWord = (secondWordEnd == std::string::npos) ? text.substr(secondWordStart)
+                                                        : text.substr(secondWordStart, secondWordEnd - secondWordStart);
+    }
+  }
+
   auto lastNonSpace = text.find_last_not_of(" \t\r\n");
   size_t lastWordStart = text.rfind(' ', lastNonSpace);
   std::string lastWord = (lastWordStart == std::string::npos)
                              ? text.substr(0, lastNonSpace + 1)
                              : text.substr(lastWordStart + 1, lastNonSpace - lastWordStart);
 
+  // Extract second-to-last word for end phrase matching
+  std::string secondToLastWord;
+  if (lastWordStart != std::string::npos && lastWordStart > 0) {
+    size_t prevEnd = lastWordStart;
+    size_t prevNonSpace = text.find_last_not_of(' ', prevEnd - 1);
+    if (prevNonSpace != std::string::npos) {
+      size_t prevStart = text.rfind(' ', prevNonSpace);
+      prevStart = (prevStart == std::string::npos) ? 0 : prevStart + 1;
+      secondToLastWord = text.substr(prevStart, prevNonSpace - prevStart + 1);
+    }
+  }
+
   // Find start: FULL or START roles match first word; END role starts at page beginning
+  // Uses two-word phrase matching to avoid false positives on common first words.
   int startLine = 0, startChar = 0;
   if (role == HighlightPageRole::FULL || role == HighlightPageRole::START) {
     startLine = -1;
     for (int i = 0; i < lineCount; i++) {
       const auto& words = lines[i]->getBlock()->getWords();
       int charOff = 0;
-      for (const auto& w : words) {
-        if (w == firstWord) {
+      for (auto wIt = words.begin(); wIt != words.end(); ++wIt) {
+        if (*wIt == firstWord) {
+          // Verify second word follows immediately (phrase match) to prevent false positives
+          if (!secondWord.empty()) {
+            auto nextIt = std::next(wIt);
+            if (nextIt == words.end() || *nextIt != secondWord) {
+              charOff += static_cast<int>(wIt->size()) + 1;
+              continue;
+            }
+          }
           startLine = i;
           startChar = charOff;
           break;
         }
-        charOff += static_cast<int>(w.size()) + 1;
+        charOff += static_cast<int>(wIt->size()) + 1;
       }
       if (startLine >= 0) break;
     }
@@ -453,15 +486,26 @@ bool findHighlightBounds(const Page& page, const std::string& text, HighlightPag
   }
 
   // Find end: FULL or END roles match last word; START role ends at page end
+  // Uses two-word phrase matching to avoid false positives on common last words.
   int endLine = lineCount - 1, endChar = -1;
   if (role == HighlightPageRole::FULL || role == HighlightPageRole::END) {
     endLine = -1;
     for (int i = lineCount - 1; i >= startLine; i--) {
       const auto& words = lines[i]->getBlock()->getWords();
       int charOff = 0, lastMatchEnd = -1;
-      for (const auto& w : words) {
-        if (w == lastWord) lastMatchEnd = charOff + static_cast<int>(w.size());
-        charOff += static_cast<int>(w.size()) + 1;
+      for (auto wIt = words.begin(); wIt != words.end(); ++wIt) {
+        if (*wIt == lastWord) {
+          // Verify second-to-last word precedes this word (phrase match)
+          if (!secondToLastWord.empty() && wIt != words.begin()) {
+            auto prevIt = std::prev(wIt);
+            if (*prevIt == secondToLastWord) {
+              lastMatchEnd = charOff + static_cast<int>(wIt->size());
+            }
+          } else if (secondToLastWord.empty()) {
+            lastMatchEnd = charOff + static_cast<int>(wIt->size());
+          }
+        }
+        charOff += static_cast<int>(wIt->size()) + 1;
       }
       if (lastMatchEnd >= 0) {
         endLine = i;
@@ -470,8 +514,7 @@ bool findHighlightBounds(const Page& page, const std::string& text, HighlightPag
       }
     }
     if (endLine < 0) {
-      endLine = startLine;
-      endChar = -1;
+      return false;  // last word not found on this page — don't render a phantom highlight
     }
   }
 

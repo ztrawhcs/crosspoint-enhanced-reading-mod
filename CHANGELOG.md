@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.5.3 — Highlight Rendering & Delete Fixes
+
+### Bug Fixes
+
+- **Fixed phantom highlights covering 2/3 of page**: The `START` and `END` matching roles were using single-word matching, causing common first/last words ("The", "He", "a") to match on unrelated pages after font-size changes or text reflow. Now uses two-word phrase matching — the first *two* words of the highlight must appear consecutively, preventing false positives.
+- **Fixed single-tap delete removing wrong highlight**: The delete check now uses the same FULL→START→MIDDLE→END role chain as rendering, so it only targets highlights actually visible on the current page instead of deleting the first highlight in the chapter list.
+- **Fixed chord delete (Left+Right) wiping highlights from other pages**: The chord delete now loads the current page and verifies each highlight is actually visible before deleting it, preventing collateral deletion of valid highlights elsewhere in the chapter.
+
+---
+
 ## v2.5.2 — Highlight UX Overhaul
 
 ### Improvements

@@ -466,15 +466,16 @@ void EpubReaderActivity::loop() {
                 HighlightStore::loadHighlightsForPage(epub->getTitle(), currentSpineIndex, curPageIdx);
             for (const auto& hl : savedHighlights) {
               int sl = 0, sc = 0, el = 0, ec = -1;
-              bool boundsFound = HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::FULL, sl,
-                                                                     sc, el, ec);
-              if (!boundsFound) {
-                // findHighlightBounds failed (encoding/whitespace mismatch) — fall back to treating
-                // the entire page as the highlight extent so erase still works
-                sl = 0;
-                el = textLineCount - 1;
-                LOG_DBG("ERS", "Highlight erase fallback: bounds not found for spine=%d, using full page range", hl.spineIndex);
-              }
+              // Use the same role chain as rendering to verify this highlight is actually
+              // visible on the current page. This prevents deleting the wrong highlight
+              // when multiple highlights share a chapter and FULL matching fails.
+              bool isMultiPage = (hl.startPage != hl.endPage);
+              bool hlOnPage =
+                  HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::FULL, sl, sc, el, ec) ||
+                  HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::START, sl, sc, el, ec) ||
+                  (isMultiPage && HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::MIDDLE, sl, sc, el, ec)) ||
+                  HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::END, sl, sc, el, ec);
+              if (!hlOnPage) continue;  // not visible on this page — skip
               if (cursorLine >= sl && cursorLine <= el) {
                 HighlightStore::deleteHighlight(epub->getTitle(), hl.spineIndex, hl.startPage, hl.endPage);
                 deletedHighlight = true;
@@ -803,9 +804,22 @@ void EpubReaderActivity::loop() {
       RenderLock lock(*this);
       if (section && epub) {
         int curPageIdx = section->currentPage;
+        auto chordPage = section->loadPageFromSectionFile();
         auto savedHighlights = HighlightStore::loadHighlightsForPage(epub->getTitle(), currentSpineIndex, curPageIdx);
         int count = 0;
         for (const auto& hl : savedHighlights) {
+          // Only delete highlights that actually render on this page (same logic as rendering).
+          // Prevents wiping valid highlights on other pages of the same chapter.
+          if (chordPage) {
+            int sl, sc, el, ec;
+            bool isMultiPage = (hl.startPage != hl.endPage);
+            bool visible =
+                HighlightStore::findHighlightBounds(*chordPage, hl.text, HighlightStore::HighlightPageRole::FULL, sl, sc, el, ec) ||
+                HighlightStore::findHighlightBounds(*chordPage, hl.text, HighlightStore::HighlightPageRole::START, sl, sc, el, ec) ||
+                (isMultiPage && HighlightStore::findHighlightBounds(*chordPage, hl.text, HighlightStore::HighlightPageRole::MIDDLE, sl, sc, el, ec)) ||
+                HighlightStore::findHighlightBounds(*chordPage, hl.text, HighlightStore::HighlightPageRole::END, sl, sc, el, ec);
+            if (!visible) continue;
+          }
           HighlightStore::deleteHighlight(epub->getTitle(), hl.spineIndex, hl.startPage, hl.endPage);
           count++;
         }
@@ -2079,18 +2093,23 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     for (const auto& hl : savedHighlights) {
       // Try FULL first (both first and last word on this page), then START (first word
       // here, continues to next page), then MIDDLE (intermediate page, entire page
-      // highlighted), then END (last word here, started on previous page).
-      // This handles highlights that span pages after font size / layout changes.
-      // MIDDLE must be tried before END — without it, END would incorrectly match on
-      // intermediate pages whenever the highlight's last word happens to appear there,
-      // causing only the top line(s) to be highlighted instead of the full page.
+      // highlighted — only for multi-page highlights), then END (last word here, started
+      // on previous page). MIDDLE must be tried before END — without it, END would
+      // incorrectly match on intermediate pages whenever the highlight's last word happens
+      // to appear there, causing only the top line(s) to be highlighted instead of the
+      // full page. MIDDLE is skipped for single-page highlights to avoid ghost highlights
+      // when a highlight reflows to a different page.
       int startLine = 0, startChar = 0, endLine = 0, endChar = -1;
+      // Only attempt MIDDLE (entire-page highlight) for highlights that were originally
+      // multi-page. Single-page highlights that reflow to a different page would otherwise
+      // unconditionally match MIDDLE and ghost-highlight an unrelated page.
+      bool isMultiPage = (hl.startPage != hl.endPage);
       if (!HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::FULL, startLine,
                                                startChar, endLine, endChar) &&
           !HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::START, startLine,
                                                startChar, endLine, endChar) &&
-          !HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::MIDDLE, startLine,
-                                               startChar, endLine, endChar) &&
+          !(isMultiPage && HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::MIDDLE,
+                                                               startLine, startChar, endLine, endChar)) &&
           !HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::END, startLine,
                                                startChar, endLine, endChar))
         continue;
