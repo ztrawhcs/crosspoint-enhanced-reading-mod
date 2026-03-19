@@ -350,13 +350,55 @@ void EpubReaderActivity::loop() {
   // Step 9: Only process highlight mode inputs if the feature is enabled
   if (SETTINGS.highlightModeEnabled) {
     static unsigned long lastPowerRelease = 0;
-    static bool waitingForPowerDoubleTap = false;
+    static int powerTapCount = 0;  // 0 = idle, 1 = waiting for 2nd, 2 = waiting for 3rd
 
     if (mappedInput.wasReleased(MappedInputManager::Button::Power)) {
-      if (waitingForPowerDoubleTap && (millis() - lastPowerRelease < highlightDoubleTapMs)) {
-        // Double-tap Power detected
-        waitingForPowerDoubleTap = false;
+      if (powerTapCount > 0 && (millis() - lastPowerRelease < highlightDoubleTapMs)) {
+        powerTapCount++;
+        lastPowerRelease = millis();
+        if (powerTapCount >= 3) {
+          // Triple-tap Power: clear all highlights on current page (works from any highlight state)
+          powerTapCount = 0;
+          if (highlightState.mode != HighlightState::INACTIVE && section && epub) {
+            RenderLock lock(*this);
+            int curPageIdx = section->currentPage;
+            auto savedHighlights = HighlightStore::loadHighlightsForPage(epub->getTitle(), currentSpineIndex, curPageIdx);
+            int count = 0;
+            for (const auto& hl : savedHighlights) {
+              // Filter to highlights that span the current page using stored page numbers.
+              // Text matching (findHighlightBounds) can miss reflowed highlights; page range
+              // is simpler and reliable for a user-initiated clear on the current page.
+              if (curPageIdx < hl.startPage || curPageIdx > hl.endPage) continue;
+              HighlightStore::deleteHighlight(epub->getTitle(), hl.spineIndex, hl.startPage, hl.endPage);
+              count++;
+            }
+            highlightCachedPage = -1;
+            highlightState.reset();
+            if (count > 0) {
+              LOG_DBG("ERS", "Highlight triple-tap: cleared %d highlight(s) on page %d", count, curPageIdx);
+              GUI.drawPopup(renderer, "Highlights Cleared");
+              clearPopupTimer = millis() + 1000;
+            }
+            requestUpdate();
+          }
+          return;
+        }
+        // 2nd tap seen — wait for possible 3rd tap or timeout to dispatch double-tap action
+        return;
+      } else {
+        powerTapCount = 1;
+        lastPowerRelease = millis();
+        return;  // Prevent fallthrough to navigation section where wasReleased(Power) fires page turn
+      }
+    }
 
+    // Power tap timeout: dispatch single-tap or double-tap action
+    if (powerTapCount > 0 && (millis() - lastPowerRelease > highlightDoubleTapMs)) {
+      int dispatchTaps = powerTapCount;
+      powerTapCount = 0;
+
+      if (dispatchTaps >= 2) {
+        // Double-tap Power action
         if (highlightState.mode == HighlightState::INACTIVE) {
           // Enter CURSOR mode
           RenderLock lock(*this);
@@ -437,17 +479,10 @@ void EpubReaderActivity::loop() {
           requestUpdate();
           return;
         }
-      } else {
-        waitingForPowerDoubleTap = true;
-        lastPowerRelease = millis();
-        return;  // Prevent fallthrough to navigation section where wasReleased(Power) fires page turn
+        return;  // double-tap action handled above
       }
-    }
 
-    // Power single-tap timeout: dispatch the short tap action
-    if (waitingForPowerDoubleTap && (millis() - lastPowerRelease > highlightDoubleTapMs)) {
-      waitingForPowerDoubleTap = false;
-
+      // Single-tap timeout action
       if (highlightState.mode == HighlightState::CURSOR) {
         // Single Power tap in CURSOR mode: if cursor is on a saved highlight → delete it.
         // Otherwise → enter SELECT mode.
@@ -801,45 +836,6 @@ void EpubReaderActivity::loop() {
       return;
     }
 
-    // Left+Right chord (either button pressed while other is held): clear ALL highlights on current page,
-    // stay in highlight mode (useful when erase is being finicky or to wipe a whole page at once)
-    if ((mappedInput.wasPressed(MappedInputManager::Button::Left) && mappedInput.isPressed(MappedInputManager::Button::Right)) ||
-        (mappedInput.wasPressed(MappedInputManager::Button::Right) && mappedInput.isPressed(MappedInputManager::Button::Left))) {
-      RenderLock lock(*this);
-      if (section && epub) {
-        int curPageIdx = section->currentPage;
-        auto chordPage = section->loadPageFromSectionFile();
-        auto savedHighlights = HighlightStore::loadHighlightsForPage(epub->getTitle(), currentSpineIndex, curPageIdx);
-        int count = 0;
-        for (const auto& hl : savedHighlights) {
-          // Only delete highlights that actually render on this page (same logic as rendering).
-          // Prevents wiping valid highlights on other pages of the same chapter.
-          if (chordPage) {
-            int sl, sc, el, ec;
-            bool isActuallyMiddle = (hl.startPage != hl.endPage && curPageIdx > hl.startPage && curPageIdx < hl.endPage);
-            bool visible =
-                HighlightStore::findHighlightBounds(*chordPage, hl.text, HighlightStore::HighlightPageRole::FULL, sl, sc, el, ec) ||
-                HighlightStore::findHighlightBounds(*chordPage, hl.text, HighlightStore::HighlightPageRole::START, sl, sc, el, ec) ||
-                (isActuallyMiddle && HighlightStore::findHighlightBounds(*chordPage, hl.text, HighlightStore::HighlightPageRole::MIDDLE, sl, sc, el, ec)) ||
-                HighlightStore::findHighlightBounds(*chordPage, hl.text, HighlightStore::HighlightPageRole::END, sl, sc, el, ec);
-            if (!visible) continue;
-          }
-          HighlightStore::deleteHighlight(epub->getTitle(), hl.spineIndex, hl.startPage, hl.endPage);
-          count++;
-        }
-        highlightCachedPage = -1;
-        if (count > 0) {
-          LOG_DBG("ERS", "Highlight chord: cleared %d highlight(s) on page %d", count, curPageIdx);
-          GUI.drawPopup(renderer, "Highlights Cleared");
-          clearPopupTimer = millis() + 1000;
-        } else {
-          LOG_DBG("ERS", "Highlight chord: no highlights on page %d to clear", curPageIdx);
-        }
-        requestUpdate();
-      }
-      return;
-    }
-
     if (highlightState.mode == HighlightState::CURSOR) {
       // BTN_UP / BTN_DOWN move cursor line by line
       if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
@@ -894,14 +890,24 @@ void EpubReaderActivity::loop() {
                 section->currentPage = highlightState.selectionEndPage;
               }
             } else {
-              // Normal shrink on the current end page
+              // Normal shrink on the current end page.
+              // IMPORTANT: section->currentPage may have been turned to selectionStartPage when
+              // entering SELECT mode (cross-page sentence). Always load selEndPage explicitly so
+              // we search the correct page for the sentence boundary — otherwise we'd load the
+              // start page, get garbage line text, and corrupt selectionEndCharOffset, causing the
+              // next Down press to jump multiple sentences.
               highlightState.selectionEndLine--;
               highlightState.selectionEndCharOffset = -1;
-              auto tempPage = section->loadPageFromSectionFile();
-              if (tempPage) {
-                std::string lineText = HighlightStore::getLineText(*tempPage, highlightState.selectionEndLine);
-                int sentenceEnd = HighlightStore::findLastSentenceEnd(lineText);
-                highlightState.selectionEndCharOffset = (sentenceEnd > 0) ? sentenceEnd : -1;
+              {
+                int savedPage = section->currentPage;
+                section->currentPage = selEndPage;
+                auto tempPage = section->loadPageFromSectionFile();
+                section->currentPage = savedPage;
+                if (tempPage) {
+                  std::string lineText = HighlightStore::getLineText(*tempPage, highlightState.selectionEndLine);
+                  int sentenceEnd = HighlightStore::findLastSentenceEnd(lineText);
+                  highlightState.selectionEndCharOffset = (sentenceEnd > 0) ? sentenceEnd : -1;
+                }
               }
             }
             LOG_DBG("ERS", "Highlight select shrunk → page=%d line=%d (endChar=%d)", highlightState.selectionEndPage,
@@ -2222,7 +2228,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
                   "1x Pwr: Next sentence\n"
                   "Down: Extend selection\n"
                   "L/R rocker: Fine adjust\n"
-                  "L+R: Clear page highlights\n"
+                  "3x Pwr: Clear page highlights\n"
                   "Hold Back: Cancel",
                   BoxAlign::CENTER, overlayFontId, overlayLineHeight);
     }

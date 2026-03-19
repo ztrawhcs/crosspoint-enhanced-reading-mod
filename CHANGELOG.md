@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.5.4 — Triple-Tap Clear + Cross-Page Navigation Fix
+
+### New Features
+
+- **Triple-tap Power to clear all highlights on current page** — While in highlight mode, triple-tapping the power button deletes all saved highlights that span the current page. Fires immediately on the 3rd tap; each tap must land within 350ms of the previous. Replaces the non-functional Left+Right chord (those buttons share an ADC resistor ladder and cannot be pressed simultaneously). Help overlay updated.
+
+### Bug Fixes
+
+- **Fixed: Down arrow jumps multiple sentences after crossing a page boundary** — When a selection started on the previous page (sentence detected at top of current page), the SELECT mode Up handler was loading `section->currentPage` (the start page, which the reader auto-turned to when entering SELECT mode) instead of `selectionEndPage`. This corrupted `selectionEndCharOffset` with text from the wrong page, causing the next Down press to search from a garbage position and skip multiple sentences. Now explicitly saves/restores `section->currentPage` around the page load in the "normal shrink" branch, matching the pattern already used by the Down handler.
+- **Fixed: Triple-tap clear shows popup but highlight remains** — The old chord delete used `findHighlightBounds` (text matching) to filter highlights per page, which can produce false negatives for reflowed text. Replaced with page-number range filtering (`hl.startPage <= currentPage <= hl.endPage`), which is simpler and directly answers whether the highlight overlaps the current page.
+
+---
+
 ## v2.5.3 — Highlight Rendering & Delete Fixes
 
 ### Bug Fixes
