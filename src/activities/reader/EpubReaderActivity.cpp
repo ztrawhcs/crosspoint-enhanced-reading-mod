@@ -852,6 +852,17 @@ void EpubReaderActivity::loop() {
           highlightState.cursorLineIndex--;
           LOG_DBG("ERS", "Highlight cursor up → line %d", highlightState.cursorLineIndex);
           requestUpdate();
+        } else if (section) {
+          // At top of page: Up wraps to bottom so you can quickly reach lines near the end
+          auto curPage = section->loadPageFromSectionFile();
+          if (curPage) {
+            int lineCount = HighlightStore::countTextLines(*curPage);
+            if (lineCount > 0) {
+              highlightState.cursorLineIndex = lineCount - 1;
+              LOG_DBG("ERS", "Highlight cursor wrap to bottom → line %d", highlightState.cursorLineIndex);
+              requestUpdate();
+            }
+          }
         }
         return;
       }
