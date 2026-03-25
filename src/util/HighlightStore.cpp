@@ -512,6 +512,7 @@ bool findHighlightBounds(const Page& page, const std::string& text, HighlightPag
 
   // Find start: FULL or START roles match first word; END role starts at page beginning
   // Uses two-word phrase matching to avoid false positives on common first words.
+  // Handles line-boundary case: secondWord may be the first word of the next line.
   int startLine = 0, startChar = 0;
   if (role == HighlightPageRole::FULL || role == HighlightPageRole::START) {
     startLine = -1;
@@ -520,13 +521,22 @@ bool findHighlightBounds(const Page& page, const std::string& text, HighlightPag
       int charOff = 0;
       for (auto wIt = words.begin(); wIt != words.end(); ++wIt) {
         if (*wIt == firstWord) {
-          // Verify second word follows immediately (phrase match) to prevent false positives
-          if (!secondWord.empty()) {
+          // Verify second word follows (phrase match) to prevent false positives.
+          // If firstWord is the last word on its line, check the first word of the next line.
+          bool phraseMatch = secondWord.empty();
+          if (!phraseMatch) {
             auto nextIt = std::next(wIt);
-            if (nextIt == words.end() || *nextIt != secondWord) {
-              charOff += static_cast<int>(wIt->size()) + 1;
-              continue;
+            if (nextIt != words.end()) {
+              phraseMatch = (*nextIt == secondWord);
+            } else if (i + 1 < lineCount) {
+              // firstWord is last on its line — check first word of next line
+              const auto& nextLineWords = lines[i + 1]->getBlock()->getWords();
+              phraseMatch = (!nextLineWords.empty() && nextLineWords.front() == secondWord);
             }
+          }
+          if (!phraseMatch) {
+            charOff += static_cast<int>(wIt->size()) + 1;
+            continue;
           }
           startLine = i;
           startChar = charOff;
@@ -544,27 +554,61 @@ bool findHighlightBounds(const Page& page, const std::string& text, HighlightPag
   int endLine = lineCount - 1, endChar = -1;
   if (role == HighlightPageRole::FULL || role == HighlightPageRole::END) {
     endLine = -1;
-    for (int i = lineCount - 1; i >= startLine; i--) {
-      const auto& words = lines[i]->getBlock()->getWords();
-      int charOff = 0, lastMatchEnd = -1;
-      for (auto wIt = words.begin(); wIt != words.end(); ++wIt) {
-        if (*wIt == lastWord) {
-          // Verify second-to-last word precedes this word (phrase match)
-          if (!secondToLastWord.empty() && wIt != words.begin()) {
-            auto prevIt = std::prev(wIt);
-            if (*prevIt == secondToLastWord) {
+    if (role == HighlightPageRole::END) {
+      // END role: search FORWARD (top to bottom) to find the FIRST occurrence of
+      // lastWord. The selection continuation from the previous page begins at the
+      // top of this page, so the first match is the correct sentence end.
+      // Also handles line-boundary case: when lastWord is the first word on a line,
+      // check the last word of the previous line for secondToLastWord.
+      for (int i = 0; i < lineCount && endLine < 0; i++) {
+        const auto& words = lines[i]->getBlock()->getWords();
+        int charOff = 0;
+        for (auto wIt = words.begin(); wIt != words.end() && endLine < 0; ++wIt) {
+          if (*wIt == lastWord) {
+            bool phraseMatch = secondToLastWord.empty();
+            if (!phraseMatch) {
+              if (wIt != words.begin()) {
+                // Previous word on same line
+                phraseMatch = (*std::prev(wIt) == secondToLastWord);
+              } else if (i > 0) {
+                // lastWord is first on its line — check last word of previous line
+                const auto& prevLineWords = lines[i - 1]->getBlock()->getWords();
+                phraseMatch = (!prevLineWords.empty() && prevLineWords.back() == secondToLastWord);
+              }
+            }
+            if (phraseMatch) {
+              endLine = i;
+              endChar = charOff + static_cast<int>(wIt->size());
+            }
+          }
+          charOff += static_cast<int>(wIt->size()) + 1;
+        }
+      }
+    } else {
+      // FULL role: search BACKWARD to find the last occurrence of lastWord at or
+      // after startLine (the selection ends at the rightmost matching phrase on the page).
+      for (int i = lineCount - 1; i >= startLine; i--) {
+        const auto& words = lines[i]->getBlock()->getWords();
+        int charOff = 0, lastMatchEnd = -1;
+        for (auto wIt = words.begin(); wIt != words.end(); ++wIt) {
+          if (*wIt == lastWord) {
+            // Verify second-to-last word precedes this word (phrase match)
+            if (!secondToLastWord.empty() && wIt != words.begin()) {
+              auto prevIt = std::prev(wIt);
+              if (*prevIt == secondToLastWord) {
+                lastMatchEnd = charOff + static_cast<int>(wIt->size());
+              }
+            } else if (secondToLastWord.empty()) {
               lastMatchEnd = charOff + static_cast<int>(wIt->size());
             }
-          } else if (secondToLastWord.empty()) {
-            lastMatchEnd = charOff + static_cast<int>(wIt->size());
           }
+          charOff += static_cast<int>(wIt->size()) + 1;
         }
-        charOff += static_cast<int>(wIt->size()) + 1;
-      }
-      if (lastMatchEnd >= 0) {
-        endLine = i;
-        endChar = lastMatchEnd;
-        break;
+        if (lastMatchEnd >= 0) {
+          endLine = i;
+          endChar = lastMatchEnd;
+          break;
+        }
       }
     }
     if (endLine < 0) {

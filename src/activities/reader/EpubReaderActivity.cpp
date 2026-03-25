@@ -517,6 +517,10 @@ void EpubReaderActivity::loop() {
               // middle page, so MIDDLE must not fire there — otherwise it returns full-page
               // bounds and END is never reached, producing a phantom full-page highlight.
               bool isActuallyMiddle = (hl.startPage != hl.endPage && curPageIdx > hl.startPage && curPageIdx < hl.endPage);
+              // Same page-range guard as the render path: skip multi-page highlights that
+              // are outside their recorded range so cursor-delete can't target a phantom match.
+              if (hl.startPage != hl.endPage &&
+                  (curPageIdx < hl.startPage || curPageIdx > hl.endPage)) continue;
               bool hlOnPage =
                   HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::FULL, sl, sc, el, ec) ||
                   HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::START, sl, sc, el, ec) ||
@@ -2150,6 +2154,14 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       // MIDDLE would unconditionally return full-page bounds before END gets a chance,
       // causing the entire end page to appear highlighted instead of just the sentence end.
       bool isActuallyMiddle = (hl.startPage != hl.endPage && currentPageIdx > hl.startPage && currentPageIdx < hl.endPage);
+      // Page-range guard for multi-page highlights: only attempt to render on pages
+      // within the recorded start/end range. Without this, the END role can find the
+      // highlight's last words on unrelated pages later in the chapter, producing phantom
+      // highlights. Single-page highlights don't need this guard — FULL with two-word
+      // phrase matching is tight enough to avoid false positives on unrelated pages.
+      if (hl.startPage != hl.endPage &&
+          (currentPageIdx < hl.startPage || currentPageIdx > hl.endPage))
+        continue;
       if (!HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::FULL, startLine,
                                                startChar, endLine, endChar) &&
           !HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::START, startLine,

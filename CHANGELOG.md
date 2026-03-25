@@ -1,5 +1,40 @@
 # Changelog
 
+## v2.5.8 — Cross-page highlight display fix
+
+### Bug Fixes
+
+- **Fixed: Cross-page highlights showing "all the other stuff on the page" highlighted** — `findHighlightBounds` for the END role was searching backward (bottom to top), causing it to pick the *last* occurrence of the final word on the page instead of the *first*. Since the selection continuation from the previous page starts at the top, the first occurrence is always the correct one. Now uses forward search for END role.
+- **Fixed: Phantom highlights on pages after a cross-page highlight** — END role could match the highlight's last word on pages beyond the recorded end page. Added a page-range guard: multi-page highlights are only rendered on pages within `[startPage, endPage]`.
+- **Fixed: Phrase matching failure at line boundaries** — When the first word of a selection was the last word on its display line, or the last word was the first word on its line, the two-word phrase match would fail (no adjacent word on the same line to compare). Now checks across the line boundary: `secondWord` is looked up as the first word of the next line; `secondToLastWord` as the last word of the previous line.
+
+---
+
+## v2.5.7 — Version tracking fix
+
+### Bug Fixes
+
+- **Fixed: Launch screen always shows 2.5.4** — Boot screen version string was hardcoded instead of using the `CROSSPOINT_VERSION` build macro. Now reads from the macro, so it always matches the actual firmware version. Also bumped `platformio.ini` version (was stuck at 2.5.4 across v2.5.5 and v2.5.6 releases, causing the device to believe it was always on 2.5.4).
+
+---
+
+## v2.5.6 — Image page highlighting fix
+
+### Bug Fixes
+
+- **Fixed: Visual corruption when highlighting a page with images** — Highlight mode now uses a fast BW rendering path on image pages, preventing the double-refresh quality pass from clobbering highlight bars.
+- **Image saving** — Highlighting a page that contains an image copies the image to `/highlights/images/` on the SD card.
+
+---
+
+## v2.5.5 — OTA version comparison fix
+
+### Bug Fixes
+
+- **Fixed: OTA updater rejected updates due to `v` prefix in release tag** — `sscanf("%d.%d.%d")` could not parse `v2.5.5`; release tags now omit the `v` prefix.
+
+---
+
 ## v2.5.4 — Triple-Tap Clear + Cross-Page Navigation Fix
 
 ### New Features
