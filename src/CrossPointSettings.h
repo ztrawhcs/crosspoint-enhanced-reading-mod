@@ -86,7 +86,33 @@ class CrossPointSettings {
   enum SHORT_PWRBTN { IGNORE = 0, SLEEP = 1, PAGE_TURN = 2, SHORT_PWRBTN_COUNT };
   enum HIDE_BATTERY_PERCENTAGE { HIDE_NEVER = 0, HIDE_READER = 1, HIDE_ALWAYS = 2, HIDE_BATTERY_PERCENTAGE_COUNT };
   // UI Theme
-  enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2 };
+  enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, LYRA_CUSTOM = 3 };
+
+  enum DAILY_GOAL_TARGET {
+    GOAL_15_MIN = 0,
+    GOAL_30_MIN = 1,
+    GOAL_45_MIN = 2,
+    GOAL_60_MIN = 3,
+    DAILY_GOAL_TARGET_COUNT
+  };
+
+  enum DATE_FORMAT {
+    DATE_DD_MM_YYYY = 0,
+    DATE_MM_DD_YYYY = 1,
+    DATE_YYYY_MM_DD = 2,
+    DATE_FORMAT_COUNT
+  };
+
+  enum SLEEP_IMAGE_ORDER {
+    SLEEP_ORDER_SEQUENTIAL = 0,
+    SLEEP_ORDER_RANDOM = 1,
+    SLEEP_IMAGE_ORDER_COUNT
+  };
+
+  enum SHORTCUT_LOCATION {
+    SHORTCUT_HOME = 0,
+    SHORTCUT_APPS = 1
+  };
 
   uint8_t sleepScreen = DARK;
   uint8_t sleepScreenCoverMode = FIT;
@@ -124,6 +150,20 @@ class CrossPointSettings {
   uint8_t swapLandscapeControls = 0;
   uint8_t highlightModeEnabled = 1;  // --- HIGHLIGHT MODE --- enable/disable highlight feature
 
+  // Stats and time settings (added for cpr-vcodex feature merge)
+  uint8_t displayDay = 0;
+  uint8_t autoSyncDay = 0;
+  uint8_t timeZonePreset = 0;
+  uint8_t dateFormat = 0;
+  uint8_t dailyGoalTarget = GOAL_30_MIN;
+  uint8_t showStatsAfterReading = 0;
+  uint8_t achievementsEnabled = 1;
+  uint8_t achievementPopups = 1;
+
+  // Sleep folder settings
+  char sleepDirectory[128] = "";
+  uint8_t sleepImageOrder = SLEEP_ORDER_SEQUENTIAL;
+
   ~CrossPointSettings() = default;
 
   static CrossPointSettings& getInstance() { return instance; }
@@ -132,6 +172,7 @@ class CrossPointSettings {
     return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;
   }
   int getReaderFontId() const;
+  uint64_t getDailyGoalMs() const;
 
   // If count_only is true, returns the number of settings items that would be written.
   uint8_t writeSettings(FsFile& file, bool count_only = false) const;

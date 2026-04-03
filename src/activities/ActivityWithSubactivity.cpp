@@ -65,6 +65,7 @@ void ActivityWithSubactivity::startActivityForResult(std::unique_ptr<Activity> a
                                                      ActivityResultHandler resultHandler) {
   pendingResultHandler = std::move(resultHandler);
   hasPendingResult = false;
+  activity->parentActivity = this;
   enterNewActivity(activity.release());
 }
 

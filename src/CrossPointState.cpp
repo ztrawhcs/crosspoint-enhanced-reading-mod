@@ -5,7 +5,7 @@
 #include <Serialization.h>
 
 namespace {
-constexpr uint8_t STATE_FILE_VERSION = 4;
+constexpr uint8_t STATE_FILE_VERSION = 5;
 constexpr char STATE_FILE[] = "/.crosspoint/state.bin";
 }  // namespace
 
@@ -22,6 +22,7 @@ bool CrossPointState::saveToFile() const {
   serialization::writePod(outputFile, lastSleepImage);
   serialization::writePod(outputFile, readerActivityLoadCount);
   serialization::writePod(outputFile, lastSleepFromReader);
+  serialization::writePod(outputFile, lastKnownValidTimestamp);
   outputFile.close();
   return true;
 }
@@ -55,6 +56,12 @@ bool CrossPointState::loadFromFile() {
     serialization::readPod(inputFile, lastSleepFromReader);
   } else {
     lastSleepFromReader = false;
+  }
+
+  if (version >= 5) {
+    serialization::readPod(inputFile, lastKnownValidTimestamp);
+  } else {
+    lastKnownValidTimestamp = 0;
   }
 
   inputFile.close();

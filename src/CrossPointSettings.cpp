@@ -134,6 +134,17 @@ uint8_t CrossPointSettings::writeSettings(FsFile& file, bool count_only) const {
   writer.writeItem(file, forceBoldText);
   writer.writeItem(file, swapPortraitControls);
   writer.writeItem(file, swapLandscapeControls);
+  // Stats and time settings (added for cpr-vcodex merge)
+  writer.writeItem(file, displayDay);
+  writer.writeItem(file, autoSyncDay);
+  writer.writeItem(file, timeZonePreset);
+  writer.writeItem(file, dateFormat);
+  writer.writeItem(file, dailyGoalTarget);
+  writer.writeItem(file, showStatsAfterReading);
+  writer.writeItem(file, achievementsEnabled);
+  writer.writeItem(file, achievementPopups);
+  writer.writeItemString(file, sleepDirectory);
+  writer.writeItem(file, sleepImageOrder);
 
   return writer.item_count;
 }
@@ -268,6 +279,32 @@ bool CrossPointSettings::loadFromFile() {
 
     serialization::readPod(inputFile, swapLandscapeControls);
     if (++settingsRead >= fileSettingsCount) break;
+    // Stats and time settings (cpr-vcodex merge)
+    serialization::readPod(inputFile, displayDay);
+    if (++settingsRead >= fileSettingsCount) break;
+    serialization::readPod(inputFile, autoSyncDay);
+    if (++settingsRead >= fileSettingsCount) break;
+    readAndValidate(inputFile, timeZonePreset, 255);
+    if (++settingsRead >= fileSettingsCount) break;
+    readAndValidate(inputFile, dateFormat, DATE_FORMAT_COUNT);
+    if (++settingsRead >= fileSettingsCount) break;
+    readAndValidate(inputFile, dailyGoalTarget, DAILY_GOAL_TARGET_COUNT);
+    if (++settingsRead >= fileSettingsCount) break;
+    serialization::readPod(inputFile, showStatsAfterReading);
+    if (++settingsRead >= fileSettingsCount) break;
+    serialization::readPod(inputFile, achievementsEnabled);
+    if (++settingsRead >= fileSettingsCount) break;
+    serialization::readPod(inputFile, achievementPopups);
+    if (++settingsRead >= fileSettingsCount) break;
+    {
+      std::string sleepDirStr;
+      serialization::readString(inputFile, sleepDirStr);
+      strncpy(sleepDirectory, sleepDirStr.c_str(), sizeof(sleepDirectory) - 1);
+      sleepDirectory[sizeof(sleepDirectory) - 1] = '\0';
+    }
+    if (++settingsRead >= fileSettingsCount) break;
+    readAndValidate(inputFile, sleepImageOrder, SLEEP_IMAGE_ORDER_COUNT);
+    if (++settingsRead >= fileSettingsCount) break;
 
   } while (false);
 
@@ -389,5 +426,19 @@ int CrossPointSettings::getReaderFontId() const {
         case EXTRA_LARGE:
           return OPENDYSLEXIC_14_FONT_ID;
       }
+  }
+}
+
+uint64_t CrossPointSettings::getDailyGoalMs() const {
+  switch (static_cast<DAILY_GOAL_TARGET>(dailyGoalTarget)) {
+    case GOAL_15_MIN:
+      return 15ULL * 60ULL * 1000ULL;
+    case GOAL_30_MIN:
+    default:
+      return 30ULL * 60ULL * 1000ULL;
+    case GOAL_45_MIN:
+      return 45ULL * 60ULL * 1000ULL;
+    case GOAL_60_MIN:
+      return 60ULL * 60ULL * 1000ULL;
   }
 }

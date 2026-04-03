@@ -5,6 +5,8 @@
 #include "ActivityResult.h"
 
 class ActivityWithSubactivity : public Activity {
+  friend class Activity;  // Allow Activity::finish() to call finishSubactivity()
+
  protected:
   std::unique_ptr<Activity> subActivity = nullptr;
   ActivityResultHandler pendingResultHandler = nullptr;

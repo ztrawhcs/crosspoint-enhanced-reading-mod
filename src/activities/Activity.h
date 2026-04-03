@@ -6,11 +6,15 @@
 #include <freertos/task.h>
 
 #include <cassert>
+#include <functional>
 #include <string>
 #include <utility>
 
+#include "ActivityResult.h"
 #include "GfxRenderer.h"
 #include "MappedInputManager.h"
+
+class ActivityWithSubactivity;
 
 class Activity {
  protected:
@@ -25,6 +29,14 @@ class Activity {
 
   // Mutex to protect rendering operations from being deleted mid-render
   SemaphoreHandle_t renderingMutex = nullptr;
+
+  // Parent activity for subactivity finish/setResult support
+  ActivityWithSubactivity* parentActivity = nullptr;
+  ActivityResult pendingActivityResult;
+
+  // Called by subactivities to signal completion to parent
+  void finish();
+  void setResult(ActivityResult&& result);
 
  public:
   explicit Activity(std::string name, GfxRenderer& renderer, MappedInputManager& mappedInput)

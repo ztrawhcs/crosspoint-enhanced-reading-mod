@@ -16,3 +16,7 @@
 #define UI_10_FONT_ID (-1246724383)
 #define UI_12_FONT_ID (-359249323)
 #define SMALL_FONT_ID (1073217904)
+// X-Small font IDs (added for cpr-vcodex feature merge)
+#define BOOKERLY_10_FONT_ID (-464589115)
+#define NOTOSANS_10_FONT_ID (1197636217)
+#define OPENDYSLEXIC_7_FONT_ID (1586393943)

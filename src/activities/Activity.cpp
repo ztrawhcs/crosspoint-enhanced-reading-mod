@@ -1,6 +1,9 @@
 #include "Activity.h"
 
 #include <HalPowerManager.h>
+#include <Logging.h>
+
+#include "ActivityWithSubactivity.h"
 
 void Activity::renderTaskTrampoline(void* param) {
   auto* self = static_cast<Activity*>(param);
@@ -50,6 +53,18 @@ void Activity::requestUpdate() {
 void Activity::requestUpdateAndWait() {
   // FIXME @ngxson : properly implement this using freeRTOS notification
   delay(100);
+}
+
+void Activity::setResult(ActivityResult&& result) {
+  pendingActivityResult = std::move(result);
+}
+
+void Activity::finish() {
+  if (parentActivity) {
+    parentActivity->finishSubactivity(pendingActivityResult);
+  } else {
+    LOG_WRN("ACT", "finish() called but no parent activity set for %s", name.c_str());
+  }
 }
 
 // RenderLock
