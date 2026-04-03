@@ -23,6 +23,7 @@
 #include "RecentBooksStore.h"
 #include "activities/apps/AchievementsActivity.h"
 #include "activities/apps/AppsActivity.h"
+#include "activities/apps/IfFoundActivity.h"
 #include "activities/apps/ReadingHeatmapActivity.h"
 #include "activities/apps/ReadingStatsActivity.h"
 #include "activities/apps/SyncDayActivity.h"
@@ -261,6 +262,11 @@ void onGoToBrowser() {
 
 void onGoToApps();
 
+void onGoToIfFound() {
+  exitActivity();
+  enterNewActivity(new IfFoundActivity(renderer, mappedInputManager, onGoToApps));
+}
+
 void onGoToReadingStats() {
   exitActivity();
   enterNewActivity(new ReadingStatsActivity(renderer, mappedInputManager, onGoToApps));
@@ -291,7 +297,7 @@ void onGoToApps() {
                                     onGoToSyncDay,
                                     onGoToReadingHeatmap,
                                     onGoToAchievements,
-                                    nullptr,  // onGoToIfFound — added in feature/if-found
+                                    onGoToIfFound,
                                     nullptr,  // onGoToReadMe — added in feature/readme-activity
                                     onGoToFileTransfer,
                                     nullptr,  // onGoToSleep — added in feature/sleep-app

@@ -185,6 +185,8 @@ uint8_t CrossPointSettings::writeSettings(FsFile& file, bool count_only) const {
   writer.writeItem(file, sleepShortcut);
   writer.writeItem(file, sleepShortcutOrder);
   writer.writeItem(file, sleepShortcutVisible);
+  // If Found contact text
+  writer.writeItemString(file, ifFoundText);
 
   return writer.item_count;
 }
@@ -423,6 +425,14 @@ bool CrossPointSettings::loadFromFile() {
     serialization::readPod(inputFile, sleepShortcutOrder);
     if (++settingsRead >= fileSettingsCount) break;
     serialization::readPod(inputFile, sleepShortcutVisible);
+    if (++settingsRead >= fileSettingsCount) break;
+    // If Found contact text
+    {
+      std::string ifFoundStr;
+      serialization::readString(inputFile, ifFoundStr);
+      strncpy(ifFoundText, ifFoundStr.c_str(), sizeof(ifFoundText) - 1);
+      ifFoundText[sizeof(ifFoundText) - 1] = '\0';
+    }
     if (++settingsRead >= fileSettingsCount) break;
 
   } while (false);

@@ -186,6 +186,9 @@ class CrossPointSettings {
   uint8_t achievementsShortcut = SHORTCUT_APPS;
   uint8_t achievementsShortcutOrder = 2;
   uint8_t achievementsShortcutVisible = 1;
+  // If Found contact text (shown on the If Found screen)
+  char ifFoundText[128] = "";
+
   uint8_t ifFoundShortcut = SHORTCUT_APPS;
   uint8_t ifFoundShortcutOrder = 3;
   uint8_t ifFoundShortcutVisible = 0;
