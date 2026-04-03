@@ -31,6 +31,9 @@ int HomeActivity::getMenuItemCount() const {
   if (onSyncDayOpen) {
     count++;  // Sync Day
   }
+  if (onReadingHeatmapOpen) {
+    count++;  // Reading Heatmap
+  }
   return count;
 }
 
@@ -198,6 +201,7 @@ void HomeActivity::loop() {
     const int opdsLibraryIdx = hasOpdsUrl ? idx++ : -1;
     const int fileTransferIdx = idx++;
     const int syncDayIdx = onSyncDayOpen ? idx++ : -1;
+    const int heatmapIdx = onReadingHeatmapOpen ? idx++ : -1;
     const int settingsIdx = idx;
 
     if (selectorIndex < recentBooks.size()) {
@@ -212,6 +216,8 @@ void HomeActivity::loop() {
       onFileTransferOpen();
     } else if (menuSelectedIndex == syncDayIdx) {
       onSyncDayOpen();
+    } else if (menuSelectedIndex == heatmapIdx) {
+      onReadingHeatmapOpen();
     } else if (menuSelectedIndex == settingsIdx) {
       onSettingsOpen();
     }
@@ -244,9 +250,13 @@ void HomeActivity::render(Activity::RenderLock&&) {
   }
 
   if (onSyncDayOpen) {
-    // Insert Sync Day before Settings (last item)
     menuItems.insert(menuItems.end() - 1, tr(STR_SYNC_DAY));
     menuIcons.insert(menuIcons.end() - 1, Wifi);
+  }
+
+  if (onReadingHeatmapOpen) {
+    menuItems.insert(menuItems.end() - 1, tr(STR_READING_TIMELINE));
+    menuIcons.insert(menuIcons.end() - 1, Recent);
   }
 
   GUI.drawButtonMenu(

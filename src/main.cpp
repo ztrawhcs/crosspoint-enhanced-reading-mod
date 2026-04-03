@@ -20,6 +20,7 @@
 #include "MappedInputManager.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
+#include "activities/apps/ReadingHeatmapActivity.h"
 #include "activities/apps/SyncDayActivity.h"
 #include "util/TimeUtils.h"
 #include "activities/boot_sleep/BootActivity.h"
@@ -259,10 +260,16 @@ void onGoToSyncDay() {
   enterNewActivity(new SyncDayActivity(renderer, mappedInputManager));
 }
 
+void onGoToReadingHeatmap() {
+  exitActivity();
+  enterNewActivity(new ReadingHeatmapActivity(renderer, mappedInputManager));
+}
+
 void onGoHome() {
   exitActivity();
   enterNewActivity(new HomeActivity(renderer, mappedInputManager, onGoToReader, onGoToMyLibrary, onGoToRecentBooks,
-                                    onGoToSettings, onGoToFileTransfer, onGoToBrowser, onGoToSyncDay));
+                                    onGoToSettings, onGoToFileTransfer, onGoToBrowser, onGoToSyncDay,
+                                    onGoToReadingHeatmap));
 }
 
 void setupDisplayAndFonts() {
