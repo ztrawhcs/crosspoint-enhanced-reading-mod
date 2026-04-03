@@ -32,8 +32,10 @@ void SleepActivity::onEnter() {
 }
 
 void SleepActivity::renderCustomSleepScreen() const {
-  // Check if we have a /sleep directory
-  auto dir = Storage.open("/sleep");
+  // Use configured sleep directory, or fall back to /sleep
+  const std::string sleepDir = (strlen(SETTINGS.sleepDirectory) > 0) ? std::string(SETTINGS.sleepDirectory) : "/sleep";
+
+  auto dir = Storage.open(sleepDir.c_str());
   if (dir && dir.isDirectory()) {
     std::vector<std::string> files;
     char name[500];
@@ -66,18 +68,24 @@ void SleepActivity::renderCustomSleepScreen() const {
     }
     const auto numFiles = files.size();
     if (numFiles > 0) {
-      // Generate a random number between 1 and numFiles
-      auto randomFileIndex = random(numFiles);
-      // If we picked the same image as last time, reroll
-      while (numFiles > 1 && randomFileIndex == APP_STATE.lastSleepImage) {
-        randomFileIndex = random(numFiles);
+      size_t fileIndex = 0;
+      if (SETTINGS.sleepImageOrder == CrossPointSettings::SLEEP_IMAGE_ORDER::SLEEP_ORDER_RANDOM) {
+        // Random mode: pick a random image (reroll if same as last time)
+        auto randomFileIndex = random(numFiles);
+        while (numFiles > 1 && randomFileIndex == APP_STATE.lastSleepImage) {
+          randomFileIndex = random(numFiles);
+        }
+        fileIndex = randomFileIndex;
+      } else {
+        // Sequential mode: advance to next image
+        fileIndex = (APP_STATE.lastSleepImage + 1) % numFiles;
       }
-      APP_STATE.lastSleepImage = randomFileIndex;
+      APP_STATE.lastSleepImage = fileIndex;
       APP_STATE.saveToFile();
-      const auto filename = "/sleep/" + files[randomFileIndex];
+      const auto filename = sleepDir + "/" + files[fileIndex];
       FsFile file;
       if (Storage.openFileForRead("SLP", filename, file)) {
-        LOG_DBG("SLP", "Randomly loading: /sleep/%s", files[randomFileIndex].c_str());
+        LOG_DBG("SLP", "Loading sleep image: %s", filename.c_str());
         delay(100);
         Bitmap bitmap(file, true);
         if (bitmap.parseHeaders() == BmpReaderError::Ok) {

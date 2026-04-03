@@ -25,6 +25,7 @@
 #include "activities/apps/AppsActivity.h"
 #include "activities/apps/IfFoundActivity.h"
 #include "activities/apps/ReadMeActivity.h"
+#include "activities/apps/SleepAppActivity.h"
 #include "activities/apps/ReadingHeatmapActivity.h"
 #include "activities/apps/ReadingStatsActivity.h"
 #include "activities/apps/SyncDayActivity.h"
@@ -273,6 +274,11 @@ void onGoToReadMe() {
   enterNewActivity(new ReadMeActivity(renderer, mappedInputManager, onGoToApps));
 }
 
+void onGoToSleepApp() {
+  exitActivity();
+  enterNewActivity(new SleepAppActivity(renderer, mappedInputManager, onGoHome));
+}
+
 void onGoToReadingStats() {
   exitActivity();
   enterNewActivity(new ReadingStatsActivity(renderer, mappedInputManager, onGoToApps));
@@ -306,7 +312,7 @@ void onGoToApps() {
                                     onGoToIfFound,
                                     onGoToReadMe,
                                     onGoToFileTransfer,
-                                    nullptr,  // onGoToSleep — added in feature/sleep-app
+                                    onGoToSleepApp,
                                     onGoToSettings));
 }
 
