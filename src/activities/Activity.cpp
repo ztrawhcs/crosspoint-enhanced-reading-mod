@@ -63,7 +63,7 @@ void Activity::finish() {
   if (parentActivity) {
     parentActivity->finishSubactivity(pendingActivityResult);
   } else {
-    LOG_WRN("ACT", "finish() called but no parent activity set for %s", name.c_str());
+    LOG_ERR("ACT", "finish() called but no parent activity set for %s", name.c_str());
   }
 }
 
