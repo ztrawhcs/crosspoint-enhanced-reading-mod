@@ -201,7 +201,11 @@ void SyncDayActivity::loop() {
   }
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-    finish();
+    if (onComplete) {
+      onComplete();
+    } else {
+      finish();
+    }
     return;
   }
 

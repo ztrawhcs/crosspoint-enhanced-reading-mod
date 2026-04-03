@@ -164,6 +164,47 @@ class CrossPointSettings {
   char sleepDirectory[128] = "";
   uint8_t sleepImageOrder = SLEEP_ORDER_SEQUENTIAL;
 
+  // Shortcut location/order/visibility settings (added for cpr-vcodex merge)
+  uint8_t browseFilesShortcut = SHORTCUT_HOME;
+  uint8_t browseFilesShortcutOrder = 0;
+  uint8_t browseFilesShortcutVisible = 1;
+  uint8_t statsShortcut = SHORTCUT_HOME;
+  uint8_t statsShortcutOrder = 1;
+  uint8_t statsShortcutVisible = 0;
+  uint8_t syncDayShortcut = SHORTCUT_HOME;
+  uint8_t syncDayShortcutOrder = 2;
+  uint8_t syncDayShortcutVisible = 1;
+  uint8_t settingsShortcut = SHORTCUT_HOME;
+  uint8_t settingsShortcutOrder = 3;
+  uint8_t settingsShortcutVisible = 1;
+  uint8_t readingStatsShortcut = SHORTCUT_APPS;
+  uint8_t readingStatsShortcutOrder = 0;
+  uint8_t readingStatsShortcutVisible = 1;
+  uint8_t readingHeatmapShortcut = SHORTCUT_APPS;
+  uint8_t readingHeatmapShortcutOrder = 1;
+  uint8_t readingHeatmapShortcutVisible = 1;
+  uint8_t achievementsShortcut = SHORTCUT_APPS;
+  uint8_t achievementsShortcutOrder = 2;
+  uint8_t achievementsShortcutVisible = 1;
+  uint8_t ifFoundShortcut = SHORTCUT_APPS;
+  uint8_t ifFoundShortcutOrder = 3;
+  uint8_t ifFoundShortcutVisible = 0;
+  uint8_t readMeShortcut = SHORTCUT_APPS;
+  uint8_t readMeShortcutOrder = 4;
+  uint8_t readMeShortcutVisible = 0;
+  uint8_t recentBooksShortcut = SHORTCUT_HOME;
+  uint8_t recentBooksShortcutOrder = 4;
+  uint8_t recentBooksShortcutVisible = 1;
+  uint8_t bookmarksShortcut = SHORTCUT_APPS;
+  uint8_t bookmarksShortcutOrder = 5;
+  uint8_t bookmarksShortcutVisible = 0;
+  uint8_t fileTransferShortcut = SHORTCUT_HOME;
+  uint8_t fileTransferShortcutOrder = 5;
+  uint8_t fileTransferShortcutVisible = 1;
+  uint8_t sleepShortcut = SHORTCUT_APPS;
+  uint8_t sleepShortcutOrder = 6;
+  uint8_t sleepShortcutVisible = 0;
+
   ~CrossPointSettings() = default;
 
   static CrossPointSettings& getInstance() { return instance; }

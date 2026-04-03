@@ -8,6 +8,7 @@
 
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
+#include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/StringUtils.h"
@@ -30,8 +31,28 @@ void RecentBooksActivity::loadRecentBooks() {
   }
 }
 
+void RecentBooksActivity::confirmDeleteSelected() {
+  if (recentBooks.empty() || selectorIndex >= recentBooks.size()) return;
+
+  const std::string bookTitle = recentBooks[selectorIndex].title;
+  const std::string bookPath = recentBooks[selectorIndex].path;
+
+  auto confirmation = std::make_unique<ConfirmationActivity>(renderer, mappedInput, tr(STR_DELETE_RECENT_BOOK),
+                                                             bookTitle);
+  startActivityForResult(std::move(confirmation), [this, bookPath](const ActivityResult& result) {
+    if (!result.isCancelled) {
+      RECENT_BOOKS.removeBook(bookPath);
+      loadRecentBooks();
+      if (selectorIndex >= recentBooks.size() && selectorIndex > 0) {
+        selectorIndex = recentBooks.size() - 1;
+      }
+    }
+    requestUpdate();
+  });
+}
+
 void RecentBooksActivity::onEnter() {
-  Activity::onEnter();
+  ActivityWithSubactivity::onEnter();
 
   // Load data
   loadRecentBooks();
@@ -41,11 +62,16 @@ void RecentBooksActivity::onEnter() {
 }
 
 void RecentBooksActivity::onExit() {
-  Activity::onExit();
+  ActivityWithSubactivity::onExit();
   recentBooks.clear();
 }
 
 void RecentBooksActivity::loop() {
+  if (subActivity) {
+    subActivity->loop();
+    return;
+  }
+
   const int pageItems = UITheme::getInstance().getNumberOfItemsPerPage(renderer, true, false, true, true);
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
@@ -58,6 +84,15 @@ void RecentBooksActivity::loop() {
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     onGoHome();
+    return;
+  }
+
+  // Long press on confirm — delete entry
+  constexpr unsigned long kDeleteLongPressMs = 700;
+  if (mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
+      mappedInput.getHeldTime() >= kDeleteLongPressMs && !recentBooks.empty()) {
+    confirmDeleteSelected();
+    return;
   }
 
   int listSize = static_cast<int>(recentBooks.size());

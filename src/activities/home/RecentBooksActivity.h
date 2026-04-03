@@ -5,11 +5,11 @@
 #include <string>
 #include <vector>
 
-#include "../Activity.h"
+#include "../ActivityWithSubactivity.h"
 #include "RecentBooksStore.h"
 #include "util/ButtonNavigator.h"
 
-class RecentBooksActivity final : public Activity {
+class RecentBooksActivity final : public ActivityWithSubactivity {
  private:
   ButtonNavigator buttonNavigator;
 
@@ -24,12 +24,13 @@ class RecentBooksActivity final : public Activity {
 
   // Data loading
   void loadRecentBooks();
+  void confirmDeleteSelected();
 
  public:
   explicit RecentBooksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                const std::function<void()>& onGoHome,
                                const std::function<void(const std::string& path)>& onSelectBook)
-      : Activity("RecentBooks", renderer, mappedInput), onSelectBook(onSelectBook), onGoHome(onGoHome) {}
+      : ActivityWithSubactivity("RecentBooks", renderer, mappedInput), onSelectBook(onSelectBook), onGoHome(onGoHome) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

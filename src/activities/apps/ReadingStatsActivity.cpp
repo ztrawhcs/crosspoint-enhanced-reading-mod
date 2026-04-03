@@ -156,7 +156,11 @@ void ReadingStatsActivity::loop() {
   const int pageItems = BOOKS_PER_PAGE;
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    finish();
+    if (onComplete) {
+      onComplete();
+    } else {
+      finish();
+    }
     return;
   }
 

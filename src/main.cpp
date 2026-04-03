@@ -22,7 +22,9 @@
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "activities/apps/AchievementsActivity.h"
+#include "activities/apps/AppsActivity.h"
 #include "activities/apps/ReadingHeatmapActivity.h"
+#include "activities/apps/ReadingStatsActivity.h"
 #include "activities/apps/SyncDayActivity.h"
 #include "util/TimeUtils.h"
 #include "activities/boot_sleep/BootActivity.h"
@@ -257,19 +259,43 @@ void onGoToBrowser() {
   enterNewActivity(new OpdsBookBrowserActivity(renderer, mappedInputManager, onGoHome));
 }
 
+void onGoToApps();
+
+void onGoToReadingStats() {
+  exitActivity();
+  enterNewActivity(new ReadingStatsActivity(renderer, mappedInputManager, onGoToApps));
+}
+
 void onGoToSyncDay() {
   exitActivity();
-  enterNewActivity(new SyncDayActivity(renderer, mappedInputManager));
+  enterNewActivity(new SyncDayActivity(renderer, mappedInputManager, onGoHome));
 }
 
 void onGoToReadingHeatmap() {
   exitActivity();
-  enterNewActivity(new ReadingHeatmapActivity(renderer, mappedInputManager));
+  enterNewActivity(new ReadingHeatmapActivity(renderer, mappedInputManager, onGoHome));
 }
 
 void onGoToAchievements() {
   exitActivity();
-  enterNewActivity(new AchievementsActivity(renderer, mappedInputManager));
+  enterNewActivity(new AchievementsActivity(renderer, mappedInputManager, onGoHome));
+}
+
+void onGoToApps() {
+  exitActivity();
+  enterNewActivity(new AppsActivity(renderer, mappedInputManager,
+                                    onGoHome,
+                                    onGoToMyLibrary,
+                                    onGoToRecentBooks,
+                                    onGoToReadingStats,
+                                    onGoToSyncDay,
+                                    onGoToReadingHeatmap,
+                                    onGoToAchievements,
+                                    nullptr,  // onGoToIfFound — added in feature/if-found
+                                    nullptr,  // onGoToReadMe — added in feature/readme-activity
+                                    onGoToFileTransfer,
+                                    nullptr,  // onGoToSleep — added in feature/sleep-app
+                                    onGoToSettings));
 }
 
 void onGoHome() {

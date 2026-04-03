@@ -114,7 +114,11 @@ void AchievementsActivity::onEnter() {
 
 void AchievementsActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    finish();
+    if (onComplete) {
+      onComplete();
+    } else {
+      finish();
+    }
     return;
   }
 
