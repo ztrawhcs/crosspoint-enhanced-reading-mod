@@ -17,6 +17,8 @@
 class ActivityWithSubactivity;
 
 class Activity {
+  friend class ActivityWithSubactivity;
+
  protected:
   std::string name;
   GfxRenderer& renderer;

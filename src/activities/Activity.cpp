@@ -8,6 +8,9 @@
 void Activity::renderTaskTrampoline(void* param) {
   auto* self = static_cast<Activity*>(param);
   self->renderTaskLoop();
+  // renderTaskLoop() is [[noreturn]] but is virtual, so the compiler
+  // cannot prove it never returns. Guard with unreachable.
+  for (;;) {}
 }
 
 void Activity::renderTaskLoop() {

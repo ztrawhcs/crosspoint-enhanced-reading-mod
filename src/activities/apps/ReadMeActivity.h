@@ -2,6 +2,8 @@
 // Original work Copyright (c) 2025 Dave Allie. MIT License.
 #pragma once
 
+#include <I18nKeys.h>
+
 #include <functional>
 #include <vector>
 

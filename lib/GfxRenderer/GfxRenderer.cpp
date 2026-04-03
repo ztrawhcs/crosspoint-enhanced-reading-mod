@@ -860,6 +860,61 @@ std::string GfxRenderer::truncatedText(const int fontId, const char* text, const
   return item.empty() ? ellipsis : item + ellipsis;
 }
 
+std::vector<std::string> GfxRenderer::wrappedText(const int fontId, const char* text, const int maxWidth,
+                                                   const int maxLines, const EpdFontFamily::Style style) const {
+  std::vector<std::string> lines;
+  if (!text || maxWidth <= 0 || maxLines <= 0) return lines;
+
+  std::string src(text);
+  std::string currentLine;
+  std::string word;
+
+  auto flushWord = [&]() {
+    if (word.empty()) return;
+    std::string candidate = currentLine.empty() ? word : (currentLine + ' ' + word);
+    if (getTextWidth(fontId, candidate.c_str(), style) <= maxWidth) {
+      currentLine = candidate;
+    } else {
+      if (!currentLine.empty()) {
+        if (static_cast<int>(lines.size()) >= maxLines - 1) {
+          // Last allowed line — truncate
+          lines.push_back(truncatedText(fontId, (currentLine + ' ' + word).c_str(), maxWidth, style));
+          currentLine.clear();
+          word.clear();
+          return;
+        }
+        lines.push_back(currentLine);
+      }
+      currentLine = word;
+    }
+    word.clear();
+  };
+
+  for (size_t i = 0; i < src.size(); ++i) {
+    if (static_cast<int>(lines.size()) >= maxLines) break;
+    char c = src[i];
+    if (c == ' ' || c == '\n') {
+      flushWord();
+      if (c == '\n' && !currentLine.empty()) {
+        if (static_cast<int>(lines.size()) < maxLines) {
+          lines.push_back(currentLine);
+          currentLine.clear();
+        }
+      }
+    } else {
+      word += c;
+    }
+  }
+  if (static_cast<int>(lines.size()) < maxLines) {
+    flushWord();
+    if (!currentLine.empty()) {
+      lines.push_back(currentLine);
+    }
+  }
+
+  return lines;
+}
+
 // Note: Internal driver treats screen in command orientation; this library exposes a logical orientation
 int GfxRenderer::getScreenWidth() const {
   switch (orientation) {

@@ -362,7 +362,7 @@ void ReadingStatsDetailActivity::loop() {
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) && Storage.exists(bookPath.c_str())) {
-    onSelectBook(bookPath);
+    finish();
   }
 }
 
