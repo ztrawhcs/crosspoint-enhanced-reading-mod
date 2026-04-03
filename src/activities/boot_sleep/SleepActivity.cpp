@@ -9,6 +9,7 @@
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "SleepScreenCache.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/Logo120.h"
@@ -217,6 +218,20 @@ void SleepActivity::renderCoverSleepScreen() const {
     return (this->*renderNoCoverSleepScreen)();
   }
 
+  // Try to use cached sleep cover BMP
+  if (SLEEP_CACHE.isValid(APP_STATE.openEpubPath, SETTINGS.sleepScreenCoverMode, SETTINGS.sleepScreenCoverFilter)) {
+    FsFile cacheFile;
+    if (Storage.openFileForRead("SLP", SleepScreenCache::CACHE_PATH, cacheFile)) {
+      Bitmap cacheBitmap(cacheFile, true);
+      if (cacheBitmap.parseHeaders() == BmpReaderError::Ok) {
+        LOG_DBG("SLP", "Using cached sleep cover BMP");
+        renderBitmapSleepScreen(cacheBitmap);
+        return;
+      }
+    }
+    SLEEP_CACHE.invalidate();
+  }
+
   std::string coverBmpPath;
   bool cropped = SETTINGS.sleepScreenCoverMode == CrossPointSettings::SLEEP_SCREEN_COVER_MODE::CROP;
 
@@ -275,6 +290,8 @@ void SleepActivity::renderCoverSleepScreen() const {
     if (bitmap.parseHeaders() == BmpReaderError::Ok) {
       LOG_DBG("SLP", "Rendering sleep cover: %s", coverBmpPath.c_str());
       renderBitmapSleepScreen(bitmap);
+      // Mark cache valid so next sleep can skip the epub/xtc loading
+      SLEEP_CACHE.markValid(APP_STATE.openEpubPath, SETTINGS.sleepScreenCoverMode, SETTINGS.sleepScreenCoverFilter);
       return;
     }
   }
