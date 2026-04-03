@@ -1,12 +1,9 @@
 #include "ActivityWithSubactivity.h"
 
-#include <HalPowerManager.h>
-
 void ActivityWithSubactivity::renderTaskLoop() {
   while (true) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     {
-      HalPowerManager::Lock powerLock;  // Ensure we don't go into low-power mode while rendering
       RenderLock lock(*this);
       if (!subActivity) {
         render(std::move(lock));
@@ -34,6 +31,18 @@ void ActivityWithSubactivity::enterNewActivity(Activity* activity) {
 }
 
 void ActivityWithSubactivity::loop() {
+  // Process any pending result from a finished sub-activity
+  if (hasPendingResult) {
+    hasPendingResult = false;
+    auto handler = std::move(pendingResultHandler);
+    pendingResultHandler = nullptr;
+    if (handler) {
+      handler(pendingResult);
+    }
+    requestUpdate();
+    return;
+  }
+
   if (subActivity) {
     subActivity->loop();
   }
@@ -50,4 +59,17 @@ void ActivityWithSubactivity::onExit() {
   // No need to lock, onExit() already acquires its own lock
   exitActivity();
   Activity::onExit();
+}
+
+void ActivityWithSubactivity::startActivityForResult(std::unique_ptr<Activity> activity,
+                                                     ActivityResultHandler resultHandler) {
+  pendingResultHandler = std::move(resultHandler);
+  hasPendingResult = false;
+  enterNewActivity(activity.release());
+}
+
+void ActivityWithSubactivity::finishSubactivity(const ActivityResult& result) {
+  exitActivity();
+  pendingResult = result;
+  hasPendingResult = true;
 }
