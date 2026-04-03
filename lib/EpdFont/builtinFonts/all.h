@@ -53,3 +53,15 @@
 #include <builtinFonts/ubuntu_10_regular.h>
 #include <builtinFonts/ubuntu_12_bold.h>
 #include <builtinFonts/ubuntu_12_regular.h>
+#include <builtinFonts/bookerly_10_bold.h>
+#include <builtinFonts/bookerly_10_bolditalic.h>
+#include <builtinFonts/bookerly_10_italic.h>
+#include <builtinFonts/bookerly_10_regular.h>
+#include <builtinFonts/notosans_10_bold.h>
+#include <builtinFonts/notosans_10_bolditalic.h>
+#include <builtinFonts/notosans_10_italic.h>
+#include <builtinFonts/notosans_10_regular.h>
+#include <builtinFonts/opendyslexic_7_bold.h>
+#include <builtinFonts/opendyslexic_7_bolditalic.h>
+#include <builtinFonts/opendyslexic_7_italic.h>
+#include <builtinFonts/opendyslexic_7_regular.h>

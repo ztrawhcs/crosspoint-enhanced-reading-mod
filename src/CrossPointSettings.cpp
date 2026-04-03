@@ -21,7 +21,7 @@ void readAndValidate(FsFile& file, uint8_t& member, const uint8_t maxValue) {
 }
 
 namespace {
-constexpr uint8_t SETTINGS_FILE_VERSION = 1;
+constexpr uint8_t SETTINGS_FILE_VERSION = 2;
 // SETTINGS_COUNT is now calculated automatically in saveToFile
 constexpr char SETTINGS_FILE[] = "/.crosspoint/settings.bin";
 
@@ -222,11 +222,12 @@ bool CrossPointSettings::loadFromFile() {
 
   uint8_t version;
   serialization::readPod(inputFile, version);
-  if (version != SETTINGS_FILE_VERSION) {
+  if (version != SETTINGS_FILE_VERSION && version != SETTINGS_FILE_VERSION - 1) {
     LOG_ERR("CPS", "Deserialization failed: Unknown version %u", version);
     inputFile.close();
     return false;
   }
+  bool legacyFontSize = (version < SETTINGS_FILE_VERSION);
 
   uint8_t fileSettingsCount = 0;
   serialization::readPod(inputFile, fileSettingsCount);
@@ -251,6 +252,8 @@ bool CrossPointSettings::loadFromFile() {
     readAndValidate(inputFile, fontFamily, FONT_FAMILY_COUNT);
     if (++settingsRead >= fileSettingsCount) break;
     readAndValidate(inputFile, fontSize, FONT_SIZE_COUNT);
+    // v1→v2 migration: X_SMALL added at position 0, shift all existing values up
+    if (legacyFontSize && fontSize < FONT_SIZE_COUNT - 1) fontSize += 1;
     if (++settingsRead >= fileSettingsCount) break;
     readAndValidate(inputFile, lineSpacing, LINE_COMPRESSION_COUNT);
     if (++settingsRead >= fileSettingsCount) break;
@@ -521,6 +524,8 @@ int CrossPointSettings::getReaderFontId() const {
     case BOOKERLY:
     default:
       switch (fontSize) {
+        case X_SMALL:
+          return BOOKERLY_10_FONT_ID;
         case SMALL:
           return BOOKERLY_12_FONT_ID;
         case MEDIUM:
@@ -533,6 +538,8 @@ int CrossPointSettings::getReaderFontId() const {
       }
     case NOTOSANS:
       switch (fontSize) {
+        case X_SMALL:
+          return NOTOSANS_10_FONT_ID;
         case SMALL:
           return NOTOSANS_12_FONT_ID;
         case MEDIUM:
@@ -545,6 +552,8 @@ int CrossPointSettings::getReaderFontId() const {
       }
     case OPENDYSLEXIC:
       switch (fontSize) {
+        case X_SMALL:
+          return OPENDYSLEXIC_7_FONT_ID;
         case SMALL:
           return OPENDYSLEXIC_8_FONT_ID;
         case MEDIUM:

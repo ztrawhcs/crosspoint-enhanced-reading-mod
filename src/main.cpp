@@ -127,6 +127,25 @@ EpdFont opendyslexic14ItalicFont(&opendyslexic_14_italic);
 EpdFont opendyslexic14BoldItalicFont(&opendyslexic_14_bolditalic);
 EpdFontFamily opendyslexic14FontFamily(&opendyslexic14RegularFont, &opendyslexic14BoldFont, &opendyslexic14ItalicFont,
                                        &opendyslexic14BoldItalicFont);
+// X-Small fonts (cpr-vcodex feature merge)
+EpdFont bookerly10RegularFont(&bookerly_10_regular);
+EpdFont bookerly10BoldFont(&bookerly_10_bold);
+EpdFont bookerly10ItalicFont(&bookerly_10_italic);
+EpdFont bookerly10BoldItalicFont(&bookerly_10_bolditalic);
+EpdFontFamily bookerly10FontFamily(&bookerly10RegularFont, &bookerly10BoldFont, &bookerly10ItalicFont,
+                                   &bookerly10BoldItalicFont);
+EpdFont notosans10RegularFont(&notosans_10_regular);
+EpdFont notosans10BoldFont(&notosans_10_bold);
+EpdFont notosans10ItalicFont(&notosans_10_italic);
+EpdFont notosans10BoldItalicFont(&notosans_10_bolditalic);
+EpdFontFamily notosans10FontFamily(&notosans10RegularFont, &notosans10BoldFont, &notosans10ItalicFont,
+                                   &notosans10BoldItalicFont);
+EpdFont opendyslexic7RegularFont(&opendyslexic_7_regular);
+EpdFont opendyslexic7BoldFont(&opendyslexic_7_bold);
+EpdFont opendyslexic7ItalicFont(&opendyslexic_7_italic);
+EpdFont opendyslexic7BoldItalicFont(&opendyslexic_7_bolditalic);
+EpdFontFamily opendyslexic7FontFamily(&opendyslexic7RegularFont, &opendyslexic7BoldFont, &opendyslexic7ItalicFont,
+                                      &opendyslexic7BoldItalicFont);
 #endif  // OMIT_FONTS
 
 EpdFont smallFont(&notosans_8_regular);
@@ -347,6 +366,10 @@ void setupDisplayAndFonts() {
   renderer.insertFont(OPENDYSLEXIC_10_FONT_ID, opendyslexic10FontFamily);
   renderer.insertFont(OPENDYSLEXIC_12_FONT_ID, opendyslexic12FontFamily);
   renderer.insertFont(OPENDYSLEXIC_14_FONT_ID, opendyslexic14FontFamily);
+  // X-Small fonts
+  renderer.insertFont(BOOKERLY_10_FONT_ID, bookerly10FontFamily);
+  renderer.insertFont(NOTOSANS_10_FONT_ID, notosans10FontFamily);
+  renderer.insertFont(OPENDYSLEXIC_7_FONT_ID, opendyslexic7FontFamily);
 #endif  // OMIT_FONTS
   renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
   renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
