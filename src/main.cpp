@@ -24,6 +24,7 @@
 #include "activities/apps/AchievementsActivity.h"
 #include "activities/apps/AppsActivity.h"
 #include "activities/apps/IfFoundActivity.h"
+#include "activities/apps/ReadMeActivity.h"
 #include "activities/apps/ReadingHeatmapActivity.h"
 #include "activities/apps/ReadingStatsActivity.h"
 #include "activities/apps/SyncDayActivity.h"
@@ -267,6 +268,11 @@ void onGoToIfFound() {
   enterNewActivity(new IfFoundActivity(renderer, mappedInputManager, onGoToApps));
 }
 
+void onGoToReadMe() {
+  exitActivity();
+  enterNewActivity(new ReadMeActivity(renderer, mappedInputManager, onGoToApps));
+}
+
 void onGoToReadingStats() {
   exitActivity();
   enterNewActivity(new ReadingStatsActivity(renderer, mappedInputManager, onGoToApps));
@@ -298,7 +304,7 @@ void onGoToApps() {
                                     onGoToReadingHeatmap,
                                     onGoToAchievements,
                                     onGoToIfFound,
-                                    nullptr,  // onGoToReadMe — added in feature/readme-activity
+                                    onGoToReadMe,
                                     onGoToFileTransfer,
                                     nullptr,  // onGoToSleep — added in feature/sleep-app
                                     onGoToSettings));
