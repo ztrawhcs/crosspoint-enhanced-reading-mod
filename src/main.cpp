@@ -20,6 +20,8 @@
 #include "MappedInputManager.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
+#include "activities/apps/SyncDayActivity.h"
+#include "util/TimeUtils.h"
 #include "activities/boot_sleep/BootActivity.h"
 #include "activities/boot_sleep/SleepActivity.h"
 #include "activities/browser/OpdsBookBrowserActivity.h"
@@ -252,10 +254,15 @@ void onGoToBrowser() {
   enterNewActivity(new OpdsBookBrowserActivity(renderer, mappedInputManager, onGoHome));
 }
 
+void onGoToSyncDay() {
+  exitActivity();
+  enterNewActivity(new SyncDayActivity(renderer, mappedInputManager));
+}
+
 void onGoHome() {
   exitActivity();
   enterNewActivity(new HomeActivity(renderer, mappedInputManager, onGoToReader, onGoToMyLibrary, onGoToRecentBooks,
-                                    onGoToSettings, onGoToFileTransfer, onGoToBrowser));
+                                    onGoToSettings, onGoToFileTransfer, onGoToBrowser, onGoToSyncDay));
 }
 
 void setupDisplayAndFonts() {
@@ -316,6 +323,7 @@ void setup() {
   }
 
   SETTINGS.loadFromFile();
+  TimeUtils::configureTimezone();
   I18N.loadSettings();
   KOREADER_STORE.loadFromFile();
   UITheme::getInstance().reload();
