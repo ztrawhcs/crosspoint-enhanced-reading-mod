@@ -430,7 +430,11 @@ void ReadingHeatmapActivity::loop() {
   if (subActivity) return;
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-    finish();
+    if (onComplete) {
+      onComplete();
+    } else {
+      finish();
+    }
     return;
   }
 

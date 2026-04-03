@@ -2,6 +2,8 @@
 // Original work Copyright (c) 2025 Dave Allie. MIT License.
 #pragma once
 
+#include <functional>
+
 #include "../ActivityWithSubactivity.h"
 
 class SyncDayActivity final : public ActivityWithSubactivity {
@@ -11,6 +13,7 @@ class SyncDayActivity final : public ActivityWithSubactivity {
   bool lastSyncSucceeded = false;
   bool lastSyncFailed = false;
   unsigned long lastClockRefreshMs = 0;
+  std::function<void()> onComplete;
 
   void openWifiSelection();
   void syncTime();
@@ -19,8 +22,9 @@ class SyncDayActivity final : public ActivityWithSubactivity {
   std::string getStatusMessage() const;
 
  public:
-  explicit SyncDayActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : ActivityWithSubactivity("SyncDay", renderer, mappedInput) {}
+  explicit SyncDayActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                           std::function<void()> onComplete = nullptr)
+      : ActivityWithSubactivity("SyncDay", renderer, mappedInput), onComplete(std::move(onComplete)) {}
 
   void onEnter() override;
   void onExit() override;

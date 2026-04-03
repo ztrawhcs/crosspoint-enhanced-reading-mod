@@ -2,6 +2,7 @@
 // Original work Copyright (c) 2025 Dave Allie. MIT License.
 #pragma once
 
+#include <functional>
 #include <vector>
 
 #include "AchievementsStore.h"
@@ -17,13 +18,15 @@ class AchievementsActivity final : public Activity {
   int selectedIndex = 0;
   std::vector<AchievementView> achievements;
   std::vector<int> visibleIndexes;
+  std::function<void()> onComplete;
 
   void refreshEntries();
   void rebuildVisibleIndexes();
 
  public:
-  explicit AchievementsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : Activity("Achievements", renderer, mappedInput) {}
+  explicit AchievementsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                std::function<void()> onComplete = nullptr)
+      : Activity("Achievements", renderer, mappedInput), onComplete(std::move(onComplete)) {}
 
   void onEnter() override;
   void loop() override;
