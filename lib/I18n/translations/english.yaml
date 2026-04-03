@@ -380,3 +380,12 @@ STR_READING_DAY: "Reading Day"
 STR_TOTAL_TIME: "Total Time"
 STR_TOP_BOOK: "Top Book"
 STR_NO_READING_DAY: "No reading data for this day"
+
+# Achievements (adapted from cpr-vcodex)
+STR_ACHIEVEMENTS: "Achievements"
+STR_ACHIEVEMENTS_APP_DESC: "Reading trophies and milestones"
+STR_PENDING: "Pending"
+STR_COMPLETED: "Completed"
+STR_NO_PENDING_ACHIEVEMENTS: "No pending achievements left"
+STR_NO_COMPLETED_ACHIEVEMENTS: "No completed achievements yet"
+STR_COMPLETED_THIS_SESSION: "Completed in this session"

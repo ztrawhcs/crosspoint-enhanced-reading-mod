@@ -34,6 +34,9 @@ int HomeActivity::getMenuItemCount() const {
   if (onReadingHeatmapOpen) {
     count++;  // Reading Heatmap
   }
+  if (onAchievementsOpen) {
+    count++;  // Achievements
+  }
   return count;
 }
 
@@ -202,6 +205,7 @@ void HomeActivity::loop() {
     const int fileTransferIdx = idx++;
     const int syncDayIdx = onSyncDayOpen ? idx++ : -1;
     const int heatmapIdx = onReadingHeatmapOpen ? idx++ : -1;
+    const int achievementsIdx = onAchievementsOpen ? idx++ : -1;
     const int settingsIdx = idx;
 
     if (selectorIndex < recentBooks.size()) {
@@ -218,6 +222,8 @@ void HomeActivity::loop() {
       onSyncDayOpen();
     } else if (menuSelectedIndex == heatmapIdx) {
       onReadingHeatmapOpen();
+    } else if (menuSelectedIndex == achievementsIdx) {
+      onAchievementsOpen();
     } else if (menuSelectedIndex == settingsIdx) {
       onSettingsOpen();
     }
@@ -257,6 +263,11 @@ void HomeActivity::render(Activity::RenderLock&&) {
   if (onReadingHeatmapOpen) {
     menuItems.insert(menuItems.end() - 1, tr(STR_READING_TIMELINE));
     menuIcons.insert(menuIcons.end() - 1, Recent);
+  }
+
+  if (onAchievementsOpen) {
+    menuItems.insert(menuItems.end() - 1, tr(STR_ACHIEVEMENTS));
+    menuIcons.insert(menuIcons.end() - 1, Settings);
   }
 
   GUI.drawButtonMenu(

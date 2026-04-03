@@ -18,8 +18,10 @@
 #include "CrossPointState.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
+#include "AchievementsStore.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
+#include "activities/apps/AchievementsActivity.h"
 #include "activities/apps/ReadingHeatmapActivity.h"
 #include "activities/apps/SyncDayActivity.h"
 #include "util/TimeUtils.h"
@@ -265,11 +267,16 @@ void onGoToReadingHeatmap() {
   enterNewActivity(new ReadingHeatmapActivity(renderer, mappedInputManager));
 }
 
+void onGoToAchievements() {
+  exitActivity();
+  enterNewActivity(new AchievementsActivity(renderer, mappedInputManager));
+}
+
 void onGoHome() {
   exitActivity();
   enterNewActivity(new HomeActivity(renderer, mappedInputManager, onGoToReader, onGoToMyLibrary, onGoToRecentBooks,
                                     onGoToSettings, onGoToFileTransfer, onGoToBrowser, onGoToSyncDay,
-                                    onGoToReadingHeatmap));
+                                    onGoToReadingHeatmap, onGoToAchievements));
 }
 
 void setupDisplayAndFonts() {
@@ -365,6 +372,7 @@ void setup() {
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
   READING_STATS.loadFromFile();
+  ACHIEVEMENTS.loadFromFile();
 
   // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
   // crashed (indicated by readerActivityLoadCount > 0)

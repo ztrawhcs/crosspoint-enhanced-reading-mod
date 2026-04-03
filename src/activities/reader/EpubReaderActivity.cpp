@@ -20,6 +20,8 @@
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "ReadingStatsStore.h"
+#include "AchievementsStore.h"
+#include "util/AchievementPopupUtils.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/HighlightStore.h"  // --- HIGHLIGHT MODE ---
@@ -264,6 +266,8 @@ void EpubReaderActivity::onExit() {
   // --- HIGHLIGHT MODE ---
 
   READING_STATS.endSession();
+  ACHIEVEMENTS.recordSessionEnded(READING_STATS.getLastSessionSnapshot());
+  showPendingAchievementPopups(renderer);
   APP_STATE.readerActivityLoadCount = 0;
   APP_STATE.saveToFile();
   section.reset();
