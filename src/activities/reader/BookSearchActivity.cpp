@@ -1,7 +1,7 @@
 #include "BookSearchActivity.h"
 
+#include <HalStorage.h>
 #include <I18n.h>
-#include <Print.h>
 
 #include <cctype>
 #include <cstring>
@@ -10,101 +10,6 @@
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-
-// ---------------------------------------------------------------------------
-// HTML-stripping case-insensitive substring searcher (Arduino Print subclass)
-//
-// Streams HTML bytes, strips tags and entities, then slides a match window
-// over the resulting plain text.  Keeps a short context buffer so we can
-// extract a readable snippet when a match is found.
-// ---------------------------------------------------------------------------
-class TextSearchStream : public Print {
- public:
-  explicit TextSearchStream(const std::string& q) : query(q), qLen(q.size()) {}
-
-  bool found = false;
-  std::string snippet;
-
-  size_t write(uint8_t c) override {
-    if (found || qLen == 0) return 1;
-
-    // Strip HTML tags
-    if (c == '<') {
-      inTag = true;
-      return 1;
-    }
-    if (c == '>') {
-      inTag = false;
-      return 1;
-    }
-    if (inTag) return 1;
-
-    // Skip HTML entities (&amp; &nbsp; etc.)
-    if (c == '&') {
-      inEntity = true;
-      return 1;
-    }
-    if (inEntity) {
-      if (c == ';') inEntity = false;
-      return 1;
-    }
-
-    // Normalise whitespace
-    char ch = (c < 32) ? ' ' : static_cast<char>(c);
-
-    // Plain-text context buffer (used to extract snippet on match).
-    // When nearly full, shift left to keep the tail.
-    if (ctxLen >= CTX_SIZE - 1) {
-      int keep = CTX_SIZE / 2;
-      memmove(ctx, ctx + (ctxLen - keep), static_cast<size_t>(keep));
-      ctxLen = keep;
-    }
-    ctx[ctxLen++] = ch;
-
-    // Rotate the match window (last qLen chars, lowercased)
-    matchBuf[matchPos] = static_cast<char>(tolower(static_cast<unsigned char>(ch)));
-    matchPos = static_cast<int>((matchPos + 1) % qLen);
-    if (matchFilled < static_cast<int>(qLen)) matchFilled++;
-
-    // Check for match once the window is full
-    if (matchFilled == static_cast<int>(qLen)) {
-      bool ok = true;
-      for (size_t i = 0; i < qLen; i++) {
-        int idx = static_cast<int>((matchPos + i) % qLen);
-        if (matchBuf[idx] != query[i]) {
-          ok = false;
-          break;
-        }
-      }
-      if (ok) {
-        found = true;
-        // Extract up to 45 chars of context ending at the current position
-        int start = ctxLen > 45 ? ctxLen - 45 : 0;
-        snippet.assign(ctx + start, static_cast<size_t>(ctxLen - start));
-        // Trim leading whitespace
-        size_t ns = snippet.find_first_not_of(" \n\r\t");
-        if (ns != std::string::npos) snippet = snippet.substr(ns);
-      }
-    }
-    return 1;
-  }
-
- private:
-  static constexpr int CTX_SIZE = 128;
-  static constexpr int MAX_QLEN = 64;
-
-  const std::string& query;
-  const size_t qLen;
-  bool inTag = false;
-  bool inEntity = false;
-
-  char ctx[CTX_SIZE] = {};
-  int ctxLen = 0;
-
-  char matchBuf[MAX_QLEN] = {};
-  int matchPos = 0;
-  int matchFilled = 0;
-};
 
 // ---------------------------------------------------------------------------
 // BookSearchActivity
@@ -124,18 +29,75 @@ std::string BookSearchActivity::getChapterTitle(const int spineIndex) const {
 }
 
 void BookSearchActivity::searchSpineItem(const int spineIndex) {
-  const auto spineItem = epub->getSpineItem(spineIndex);
-  if (spineItem.href.empty()) return;
+  // Search the pre-built section cache .bin file rather than the EPUB ZIP.
+  // Cache files are sequential binary (no ZIP decompression) so they are
+  // orders of magnitude faster to scan on SPI SD card.
+  // Word strings are stored as raw bytes (length-prefixed), so the character
+  // sequence is present verbatim and a byte-level search finds them.
+  const std::string sectionPath = epub->getCachePath() + "/sections/" + std::to_string(spineIndex) + ".bin";
 
-  TextSearchStream stream(queryLower);
-  epub->readItemContentsToStream(spineItem.href, stream, 512);
+  FsFile file;
+  if (!Storage.openFileForRead("BSA", sectionPath, file)) {
+    skippedSpines++;
+    return;
+  }
 
-  if (stream.found && static_cast<int>(results.size()) < MAX_RESULTS) {
-    SearchResult result;
-    result.spineIndex = spineIndex;
-    result.chapterTitle = getChapterTitle(spineIndex);
-    result.snippet = stream.snippet;
-    results.push_back(std::move(result));
+  const int qLen = static_cast<int>(queryLower.size());
+  const int overlap = qLen - 1;  // bytes carried between chunks for boundary matches
+
+  // Stack buffer: chunk + overlap headroom
+  uint8_t buf[SCAN_CHUNK + MAX_QUERY_LEN] = {};
+  int bufStart = 0;
+  bool found = false;
+  std::string snippet;
+
+  while (!found) {
+    const int n = file.read(buf + bufStart, SCAN_CHUNK);
+    if (n <= 0) break;
+    const int total = bufStart + n;
+
+    // Scan buf[0..total-qLen] for query (case-insensitive)
+    for (int i = 0; i <= total - qLen && !found; i++) {
+      bool ok = true;
+      for (int j = 0; j < qLen; j++) {
+        if (static_cast<char>(tolower(static_cast<unsigned char>(buf[i + j]))) != queryLower[j]) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) {
+        found = true;
+        // Extract printable context around the match, collapsing non-printable
+        // bytes (binary metadata) to single spaces so the snippet is readable.
+        const int ctxStart = std::max(0, i - 25);
+        const int ctxEnd = std::min(total, i + qLen + 25);
+        bool lastWasSpace = true;
+        for (int k = ctxStart; k < ctxEnd; k++) {
+          const char c = static_cast<char>(buf[k]);
+          if (c >= 32 && c < 127) {
+            snippet += c;
+            lastWasSpace = false;
+          } else if (!lastWasSpace) {
+            snippet += ' ';
+            lastWasSpace = true;
+          }
+        }
+        // Trim trailing space
+        if (!snippet.empty() && snippet.back() == ' ') snippet.pop_back();
+      }
+    }
+
+    if (n < SCAN_CHUNK) break;  // EOF
+
+    // Carry overlap bytes so cross-chunk matches aren't missed
+    bufStart = std::min(total, overlap);
+    memmove(buf, buf + total - bufStart, static_cast<size_t>(bufStart));
+  }
+
+  file.close();
+
+  if (found && static_cast<int>(results.size()) < MAX_RESULTS) {
+    results.push_back({spineIndex, getChapterTitle(spineIndex), snippet});
   }
 }
 
@@ -158,6 +120,7 @@ void BookSearchActivity::loop() {
           for (char& c : queryLower) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
           state = State::SEARCHING;
           currentSearchSpine = 0;
+          skippedSpines = 0;
           results.clear();
           selectedResult = 0;
           requestUpdate();
@@ -170,6 +133,12 @@ void BookSearchActivity::loop() {
   }
 
   if (state == State::SEARCHING) {
+    // Back cancels the search at any point
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      if (onCancel) onCancel();
+      return;
+    }
+
     if (currentSearchSpine < epub->getSpineItemsCount()) {
       searchSpineItem(currentSearchSpine++);
       requestUpdate();
@@ -216,13 +185,20 @@ void BookSearchActivity::render(Activity::RenderLock&&) {
   auto metrics = UITheme::getInstance().getMetrics();
 
   if (state == State::SEARCHING) {
-    // Progress screen
-    const std::string header = tr(STR_SEARCH_BOOK);
-    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, header.c_str());
+    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_SEARCH_BOOK));
 
     const std::string progress = std::string(tr(STR_SEARCHING)) + " (" + std::to_string(currentSearchSpine) + "/" +
                                  std::to_string(epub->getSpineItemsCount()) + ")";
-    renderer.drawCenteredText(UI_12_FONT_ID, pageHeight / 2, progress.c_str());
+    renderer.drawCenteredText(UI_12_FONT_ID, pageHeight / 2 - 20, progress.c_str());
+
+    if (!results.empty()) {
+      const std::string found =
+          std::to_string(results.size()) + " match" + (results.size() == 1 ? "" : "es") + " so far";
+      renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 10, found.c_str());
+    }
+
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
     renderer.displayBuffer();
     return;
@@ -230,7 +206,14 @@ void BookSearchActivity::render(Activity::RenderLock&&) {
 
   if (state == State::NO_RESULTS) {
     GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_SEARCH_BOOK));
-    renderer.drawCenteredText(UI_12_FONT_ID, pageHeight / 2, tr(STR_SEARCH_NO_RESULTS));
+
+    renderer.drawCenteredText(UI_12_FONT_ID, pageHeight / 2 - 10, tr(STR_SEARCH_NO_RESULTS));
+
+    if (skippedSpines > 0) {
+      const std::string note = "(" + std::to_string(skippedSpines) + " unread chapters skipped)";
+      renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 15, note.c_str());
+    }
+
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer();
@@ -253,19 +236,24 @@ void BookSearchActivity::render(Activity::RenderLock&&) {
       renderer.fillRect(0, itemY, pageWidth - 1, ITEM_HEIGHT, true);
     }
 
-    // Chapter title (bold)
     const std::string truncTitle =
         renderer.truncatedText(UI_12_FONT_ID, results[static_cast<size_t>(i)].chapterTitle.c_str(),
                                pageWidth - 2 * metrics.contentSidePadding, EpdFontFamily::BOLD);
     renderer.drawText(UI_12_FONT_ID, metrics.contentSidePadding, itemY + 2, truncTitle.c_str(), !isSelected,
                       EpdFontFamily::BOLD);
 
-    // Snippet (regular, smaller font)
-    const std::string truncSnippet =
-        renderer.truncatedText(UI_10_FONT_ID, results[static_cast<size_t>(i)].snippet.c_str(),
-                               pageWidth - 2 * metrics.contentSidePadding);
+    const std::string truncSnippet = renderer.truncatedText(
+        UI_10_FONT_ID, results[static_cast<size_t>(i)].snippet.c_str(), pageWidth - 2 * metrics.contentSidePadding);
     renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, itemY + titleLineH + 4, truncSnippet.c_str(),
                       !isSelected);
+  }
+
+  if (skippedSpines > 0) {
+    // Footer note if some chapters were uncached
+    const int footerY = pageHeight - metrics.buttonHintsHeight - renderer.getLineHeight(UI_10_FONT_ID) - 2;
+    const std::string note =
+        std::to_string(skippedSpines) + " unread chapter" + (skippedSpines == 1 ? "" : "s") + " not searched";
+    renderer.drawCenteredText(UI_10_FONT_ID, footerY, note.c_str());
   }
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));

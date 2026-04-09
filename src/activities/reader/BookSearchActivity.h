@@ -13,9 +13,10 @@
  * Full-text book search activity.
  *
  * Presents the on-screen keyboard (KeyboardEntryActivity) to collect a query,
- * then streams each spine item's HTML through a tag-stripping searcher one
- * spine per loop() call (so the display can show progress).  Results list lets
- * the user jump to any matching chapter.
+ * then scans each spine's pre-built section cache .bin file for the query
+ * string (one spine per loop() call so the display can show progress).
+ * Section cache files are pre-extracted binary files — no ZIP decompression,
+ * so they're fast to scan.  Results list lets the user jump to any match.
  */
 class BookSearchActivity final : public ActivityWithSubactivity {
  public:
@@ -52,11 +53,13 @@ class BookSearchActivity final : public ActivityWithSubactivity {
   std::vector<SearchResult> results;
   int selectedResult = 0;
   int currentSearchSpine = 0;
+  int skippedSpines = 0;  // sections with no cache file (not yet read by user)
 
   ButtonNavigator buttonNavigator;
 
   static constexpr int MAX_RESULTS = 8;
   static constexpr int MAX_QUERY_LEN = 40;
+  static constexpr int SCAN_CHUNK = 512;
 
   void searchSpineItem(int spineIndex);
   std::string getChapterTitle(int spineIndex) const;
