@@ -236,6 +236,16 @@ void EpubReaderActivity::onEnter() {
     f.close();
   }
 
+  // Load furthest-read position
+  if (Storage.openFileForRead("ERS", epub->getCachePath() + "/furthest.bin", f)) {
+    uint8_t fdata[4];
+    if (f.read(fdata, 4) == 4) {
+      furthestSpine = fdata[0] + (fdata[1] << 8);
+      furthestPage = fdata[2] + (fdata[3] << 8);
+    }
+    f.close();
+  }
+
   if (currentSpineIndex == 0) {
     int textSpineIndex = epub->getSpineIndexForTextReference();
     if (textSpineIndex != 0) {
@@ -1702,6 +1712,14 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
           }));
       break;
     }
+    case EpubReaderMenuActivity::MenuAction::GO_TO_FURTHEST: {
+      exitActivity();
+      currentSpineIndex = furthestSpine;
+      nextPageNumber = furthestPage;
+      section.reset();
+      requestUpdate();
+      break;
+    }
     case EpubReaderMenuActivity::MenuAction::SEARCH_BOOK: {
       exitActivity();
       enterNewActivity(new BookSearchActivity(
@@ -1963,6 +1981,21 @@ void EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageC
     LOG_DBG("ERS", "Progress saved: Chapter %d, Page %d", spineIndex, currentPage);
   } else {
     LOG_ERR("ERS", "Could not save progress!");
+  }
+
+  // Update furthest-read position if we're past the previous high-water mark
+  if (spineIndex > furthestSpine || (spineIndex == furthestSpine && currentPage > furthestPage)) {
+    furthestSpine = spineIndex;
+    furthestPage = currentPage;
+    if (Storage.openFileForWrite("ERS", epub->getCachePath() + "/furthest.bin", f)) {
+      uint8_t fdata[4];
+      fdata[0] = furthestSpine & 0xFF;
+      fdata[1] = (furthestSpine >> 8) & 0xFF;
+      fdata[2] = furthestPage & 0xFF;
+      fdata[3] = (furthestPage >> 8) & 0xFF;
+      f.write(fdata, 4);
+      f.close();
+    }
   }
 }
 

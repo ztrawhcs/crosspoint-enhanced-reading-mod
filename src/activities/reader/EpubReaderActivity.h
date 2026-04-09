@@ -39,6 +39,8 @@ class EpubReaderActivity final : public ActivityWithSubactivity {
   int nextPageNumber = 0;
   int pagesUntilFullRefresh = 0;
   int cachedSpineIndex = 0;
+  int furthestSpine = 0;   // highest spine index reached
+  int furthestPage = 0;    // highest page within furthestSpine
   int cachedChapterTotalPageCount = 0;
   size_t totalBookBytes = 0;
   // Signals that the next render should reposition within the newly loaded section

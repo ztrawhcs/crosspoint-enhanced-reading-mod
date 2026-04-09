@@ -327,6 +327,7 @@ STR_SEARCH_BOOK: "Search Book"
 STR_SEARCHING: "Searching..."
 STR_SEARCH_NO_RESULTS: "No results found"
 STR_SEARCH_ENTER_QUERY: "Search in book"
+STR_GO_TO_FURTHEST: "Go to Furthest Read"
 
 STR_BLE_PAGE_TURNER: "BLE Page Turner"
 STR_BLE_SCANNING: "Scanning..."
