@@ -1,10 +1,9 @@
-// Adapted from cpr-vcodex (https://github.com/franssjz/cpr-vcodex)
-// Original work Copyright (c) 2025 Dave Allie. MIT License.
 #include "ConfirmationActivity.h"
 
 #include <I18n.h>
 
 #include "../../components/UITheme.h"
+#include "HalDisplay.h"
 
 ConfirmationActivity::ConfirmationActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                            const std::string& heading, const std::string& body)
@@ -30,27 +29,30 @@ void ConfirmationActivity::onEnter() {
 
   startY = (renderer.getScreenHeight() - totalHeight) / 2;
 
-  requestUpdate();
+  requestUpdate(true);
 }
 
 void ConfirmationActivity::render(RenderLock&& lock) {
   renderer.clearScreen();
 
   int currentY = startY;
-
+  LOG_DBG("CONF", "currentY: %d", currentY);
+  // Draw Heading
   if (!safeHeading.empty()) {
     renderer.drawCenteredText(fontId, currentY, safeHeading.c_str(), true, EpdFontFamily::BOLD);
     currentY += lineHeight + spacing;
   }
 
+  // Draw Body
   if (!safeBody.empty()) {
     renderer.drawCenteredText(fontId, currentY, safeBody.c_str(), true, EpdFontFamily::REGULAR);
   }
 
-  const auto labels = mappedInput.mapLabels("", "", tr(STR_CANCEL), tr(STR_CONFIRM));
+  // Draw UI Elements
+  const auto labels = mappedInput.mapLabels("", "", I18N.get(StrId::STR_CANCEL), I18N.get(StrId::STR_CONFIRM));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
-  renderer.displayBuffer();
+  renderer.displayBuffer(HalDisplay::RefreshMode::FAST_REFRESH);
 }
 
 void ConfirmationActivity::loop() {

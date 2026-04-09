@@ -2,25 +2,29 @@
 #include <Epub.h>
 #include <I18n.h>
 
-#include <functional>
 #include <string>
 #include <vector>
 
-#include "../ActivityWithSubactivity.h"
+#include "../Activity.h"
 #include "util/ButtonNavigator.h"
 
-class EpubReaderMenuActivity final : public ActivityWithSubactivity {
+class EpubReaderMenuActivity final : public Activity {
  public:
+  // Menu actions available from the reader menu.
   enum class MenuAction {
     HIGHLIGHT,
     SELECT_CHAPTER,
+    FOOTNOTES,
     ROTATE_SCREEN,
     BUTTON_MOD_SETTINGS,
     SWAP_CONTROLS,
     SWAP_LANDSCAPE_CONTROLS,
     GO_TO_PERCENT,
     GO_TO_FURTHEST,
+    AUTO_PAGE_TURN,
     SEARCH_BOOK,
+    SCREENSHOT,
+    DISPLAY_QR,
     GO_HOME,
     SYNC,
     DELETE_CACHE
@@ -29,23 +33,12 @@ class EpubReaderMenuActivity final : public ActivityWithSubactivity {
   explicit EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title,
                                   const int currentPage, const int totalPages, const int bookProgressPercent,
                                   const float bookProgressExact, const size_t totalBookBytes,
-                                  const uint8_t currentOrientation, const std::function<void(uint8_t)>& onBack,
-                                  const std::function<void(MenuAction)>& onAction)
-      : ActivityWithSubactivity("EpubReaderMenu", renderer, mappedInput),
-        title(title),
-        pendingOrientation(currentOrientation),
-        currentPage(currentPage),
-        totalPages(totalPages),
-        bookProgressPercent(bookProgressPercent),
-        bookProgressExact(bookProgressExact),
-        totalBookBytes(totalBookBytes),
-        onBack(onBack),
-        onAction(onAction) {}
+                                  const uint8_t currentOrientation, const bool hasFootnotes);
 
   void onEnter() override;
   void onExit() override;
   void loop() override;
-  void render(Activity::RenderLock&&) override;
+  void render(RenderLock&&) override;
 
  private:
   struct MenuItem {
@@ -53,35 +46,25 @@ class EpubReaderMenuActivity final : public ActivityWithSubactivity {
     StrId labelId;
   };
 
-  // Fixed menu layout (order matters for up/down navigation).
-  const std::vector<MenuItem> menuItems = {{MenuAction::HIGHLIGHT, StrId::STR_HIGHLIGHT},
-                                           {MenuAction::SELECT_CHAPTER, StrId::STR_SELECT_CHAPTER},
-                                           {MenuAction::ROTATE_SCREEN, StrId::STR_ORIENTATION},
-                                           {MenuAction::BUTTON_MOD_SETTINGS, StrId::STR_BUTTON_MOD_SETTINGS},
-                                           {MenuAction::SWAP_CONTROLS, StrId::STR_PORTRAIT_CONTROLS},
-                                           {MenuAction::SWAP_LANDSCAPE_CONTROLS, StrId::STR_LANDSCAPE_CONTROLS},
-                                           {MenuAction::GO_TO_PERCENT, StrId::STR_GO_TO_PERCENT},
-                                           {MenuAction::GO_TO_FURTHEST, StrId::STR_GO_TO_FURTHEST},
-                                           {MenuAction::SEARCH_BOOK, StrId::STR_SEARCH_BOOK},
-                                           {MenuAction::GO_HOME, StrId::STR_GO_HOME_BUTTON},
-                                           {MenuAction::SYNC, StrId::STR_SYNC_PROGRESS},
-                                           {MenuAction::DELETE_CACHE, StrId::STR_DELETE_CACHE}};
+  static std::vector<MenuItem> buildMenuItems(bool hasFootnotes);
+
+  // Dynamic menu layout built in constructor
+  const std::vector<MenuItem> menuItems;
 
   int selectedIndex = 0;
 
   ButtonNavigator buttonNavigator;
   std::string title = "Reader Menu";
   uint8_t pendingOrientation = 0;
+  uint8_t selectedPageTurnOption = 0;
   const std::vector<StrId> orientationLabels = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_INVERTED,
                                                 StrId::STR_LANDSCAPE_CCW};
   const std::vector<const char*> buttonModLabels = {"Off", "Simple", "Full"};
   const std::vector<const char*> swapControlsLabels = {"Default", "Swapped"};
+  const std::vector<const char*> pageTurnLabels = {I18N.get(StrId::STR_STATE_OFF), "1", "3", "6", "12"};
   int currentPage = 0;
   int totalPages = 0;
   int bookProgressPercent = 0;
   float bookProgressExact = 0.0f;
   size_t totalBookBytes = 0;
-
-  const std::function<void(uint8_t)> onBack;
-  const std::function<void(MenuAction)> onAction;
 };

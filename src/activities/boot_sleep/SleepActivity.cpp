@@ -1,6 +1,7 @@
 #include "SleepActivity.h"
 
 #include <Epub.h>
+#include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
@@ -13,7 +14,6 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/Logo120.h"
-#include "util/StringUtils.h"
 
 void SleepActivity::onEnter() {
   Activity::onEnter();
@@ -37,6 +37,7 @@ void SleepActivity::renderCustomSleepScreen() const {
   const std::string sleepDir = (strlen(SETTINGS.sleepDirectory) > 0) ? std::string(SETTINGS.sleepDirectory) : "/sleep";
 
   auto dir = Storage.open(sleepDir.c_str());
+
   if (dir && dir.isDirectory()) {
     std::vector<std::string> files;
     char name[500];
@@ -53,7 +54,7 @@ void SleepActivity::renderCustomSleepScreen() const {
         continue;
       }
 
-      if (filename.substr(filename.length() - 4) != ".bmp") {
+      if (!FsHelpers::hasBmpExtension(filename)) {
         LOG_DBG("SLP", "Skipping non-.bmp file name: %s", name);
         file.close();
         continue;
@@ -91,9 +92,11 @@ void SleepActivity::renderCustomSleepScreen() const {
         Bitmap bitmap(file, true);
         if (bitmap.parseHeaders() == BmpReaderError::Ok) {
           renderBitmapSleepScreen(bitmap);
+          file.close();
           dir.close();
           return;
         }
+        file.close();
       }
     }
   }
@@ -107,8 +110,10 @@ void SleepActivity::renderCustomSleepScreen() const {
     if (bitmap.parseHeaders() == BmpReaderError::Ok) {
       LOG_DBG("SLP", "Loading: /sleep.bmp");
       renderBitmapSleepScreen(bitmap);
+      file.close();
       return;
     }
+    file.close();
   }
 
   renderDefaultSleepScreen();
@@ -236,8 +241,7 @@ void SleepActivity::renderCoverSleepScreen() const {
   bool cropped = SETTINGS.sleepScreenCoverMode == CrossPointSettings::SLEEP_SCREEN_COVER_MODE::CROP;
 
   // Check if the current book is XTC, TXT, or EPUB
-  if (StringUtils::checkFileExtension(APP_STATE.openEpubPath, ".xtc") ||
-      StringUtils::checkFileExtension(APP_STATE.openEpubPath, ".xtch")) {
+  if (FsHelpers::hasXtcExtension(APP_STATE.openEpubPath)) {
     // Handle XTC file
     Xtc lastXtc(APP_STATE.openEpubPath, "/.crosspoint");
     if (!lastXtc.load()) {
@@ -251,7 +255,7 @@ void SleepActivity::renderCoverSleepScreen() const {
     }
 
     coverBmpPath = lastXtc.getCoverBmpPath();
-  } else if (StringUtils::checkFileExtension(APP_STATE.openEpubPath, ".txt")) {
+  } else if (FsHelpers::hasTxtExtension(APP_STATE.openEpubPath)) {
     // Handle TXT file - looks for cover image in the same folder
     Txt lastTxt(APP_STATE.openEpubPath, "/.crosspoint");
     if (!lastTxt.load()) {
@@ -265,7 +269,7 @@ void SleepActivity::renderCoverSleepScreen() const {
     }
 
     coverBmpPath = lastTxt.getCoverBmpPath();
-  } else if (StringUtils::checkFileExtension(APP_STATE.openEpubPath, ".epub")) {
+  } else if (FsHelpers::hasEpubExtension(APP_STATE.openEpubPath)) {
     // Handle EPUB file
     Epub lastEpub(APP_STATE.openEpubPath, "/.crosspoint");
     // Skip loading css since we only need metadata here
@@ -292,8 +296,10 @@ void SleepActivity::renderCoverSleepScreen() const {
       renderBitmapSleepScreen(bitmap);
       // Mark cache valid so next sleep can skip the epub/xtc loading
       SLEEP_CACHE.markValid(APP_STATE.openEpubPath, SETTINGS.sleepScreenCoverMode, SETTINGS.sleepScreenCoverFilter);
+      file.close();
       return;
     }
+    file.close();
   }
 
   return (this->*renderNoCoverSleepScreen)();

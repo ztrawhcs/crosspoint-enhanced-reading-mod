@@ -1,5 +1,3 @@
-// Adapted from cpr-vcodex (https://github.com/franssjz/cpr-vcodex)
-// Original work Copyright (c) 2025 Dave Allie. MIT License.
 #pragma once
 #include <functional>
 #include <string>
@@ -9,6 +7,7 @@
 
 class ConfirmationActivity : public Activity {
  private:
+  // Input data
   std::string heading;
   std::string body;
 
