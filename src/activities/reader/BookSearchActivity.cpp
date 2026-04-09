@@ -126,6 +126,81 @@ std::string BookSearchActivity::getChapterTitle(const int spineIndex) const {
   return "Chapter " + std::to_string(spineIndex + 1);
 }
 
+// ---------------------------------------------------------------------------
+// Extract clean word text from a single page in an already-open .bin file.
+//
+// Binary layout understood here:
+//   Page:      uint16_t elementCount, then for each element:
+//                uint8_t tag (1=PageLine, 2=PageImage) + element data
+//   PageLine:  int16_t xPos + int16_t yPos + TextBlock
+//   TextBlock: uint16_t wordCount
+//              + for each word: uint32_t len + len bytes   ← the actual text
+//              + wordCount × uint16_t (xpos)
+//              + wordCount × uint8_t  (EpdFontFamily::Style)
+//              + 21 bytes BlockStyle
+//                  (uint8_t alignment, bool textAlignDefined,
+//                   9 × int16_t margins/padding/textIndent, bool textIndentDefined)
+//   PageImage: int16_t xPos + int16_t yPos + ImageBlock
+//   ImageBlock: uint32_t len + len bytes (path) + int16_t w + int16_t h
+// ---------------------------------------------------------------------------
+static std::string extractPageText(FsFile& file, uint32_t pageOffset) {
+  file.seek(pageOffset);
+
+  uint16_t elementCount = 0;
+  if (file.read(&elementCount, 2) != 2) return {};
+
+  std::string text;
+  char wordBuf[512];
+
+  for (uint16_t e = 0; e < elementCount && e < 500; e++) {
+    uint8_t tag = 0;
+    if (file.read(&tag, 1) != 1) break;
+
+    if (tag == 1) {  // TAG_PageLine
+      int16_t skip16;
+      file.read(&skip16, 2);  // xPos
+      file.read(&skip16, 2);  // yPos
+
+      uint16_t wordCount = 0;
+      if (file.read(&wordCount, 2) != 2 || wordCount > 2000) break;
+
+      // Read word strings (the only actual text in this block)
+      for (uint16_t w = 0; w < wordCount; w++) {
+        uint32_t len = 0;
+        if (file.read(&len, 4) != 4) break;
+        if (len > 0 && len <= 511) {
+          file.read(wordBuf, len);
+          if (!text.empty()) text += ' ';
+          text.append(wordBuf, static_cast<size_t>(len));
+        } else if (len > 511 && len <= 4096) {
+          file.seek(file.position() + len);  // skip oversized word
+        } else if (len > 4096) {
+          break;  // corrupt — bail
+        }
+      }
+
+      // Skip xpos array  (wordCount × uint16_t = 2 bytes each)
+      file.seek(file.position() + static_cast<uint32_t>(wordCount) * 2);
+      // Skip styles array (wordCount × uint8_t  = 1 byte each)
+      file.seek(file.position() + static_cast<uint32_t>(wordCount) * 1);
+      // Skip BlockStyle  (21 bytes total)
+      file.seek(file.position() + 21);
+
+    } else if (tag == 2) {  // TAG_PageImage
+      int16_t skip16;
+      file.read(&skip16, 2);  // xPos
+      file.read(&skip16, 2);  // yPos
+      uint32_t pathLen = 0;
+      if (file.read(&pathLen, 4) != 4 || pathLen > 4096) break;
+      file.seek(file.position() + pathLen + 4);  // skip path + int16_t w + int16_t h
+    } else {
+      break;  // unknown tag — corrupt
+    }
+  }
+
+  return text;
+}
+
 // Fast path: scan pre-built section cache .bin (no ZIP decompression).
 void BookSearchActivity::searchSpineItemBinary(const int spineIndex) {
   const std::string path = epub->getCachePath() + "/sections/" + std::to_string(spineIndex) + ".bin";
@@ -142,7 +217,6 @@ void BookSearchActivity::searchSpineItemBinary(const int spineIndex) {
   int bufStart = 0;
   uint32_t base = 0;  // absolute file offset of buf[0]
   bool found = false;
-  std::string snippet;
   uint32_t matchFileOffset = 0;
 
   while (!found) {
@@ -161,37 +235,6 @@ void BookSearchActivity::searchSpineItemBinary(const int spineIndex) {
       if (ok) {
         found = true;
         matchFileOffset = base + static_cast<uint32_t>(i);
-
-        // Extract ~300 printable chars centered on match for a full-sentence snippet
-        const int ctxStart = std::max(0, i - 150);
-        const int ctxEnd = std::min(total, i + qLen + 150);
-        bool lastSpace = true;
-        for (int k = ctxStart; k < ctxEnd; k++) {
-          const char c = static_cast<char>(buf[k]);
-          if (c >= 32 && c < 127) {
-            snippet += c;
-            lastSpace = false;
-          } else if (!lastSpace) {
-            snippet += ' ';
-            lastSpace = true;
-          }
-        }
-        if (!snippet.empty() && snippet.back() == ' ') snippet.pop_back();
-
-        // Trim leading whitespace
-        size_t ns = snippet.find_first_not_of(' ');
-        if (ns != std::string::npos && ns > 0) snippet = snippet.substr(ns);
-
-        // Trim to sentence start (find last '. '/'! '/'? ' before match area)
-        const int matchInSnippet = i - ctxStart;  // approximate, pre-normalization
-        const int searchEnd = std::min(matchInSnippet, static_cast<int>(snippet.size()));
-        for (int si = searchEnd - 2; si > 0; si--) {
-          char t = snippet[static_cast<size_t>(si)];
-          if ((t == '.' || t == '!' || t == '?') && snippet[static_cast<size_t>(si + 1)] == ' ') {
-            snippet = snippet.substr(static_cast<size_t>(si + 2));
-            break;
-          }
-        }
       }
     }
 
@@ -217,6 +260,9 @@ void BookSearchActivity::searchSpineItemBinary(const int spineIndex) {
   //   [18] uint16_t pageCount (2)
   //   [20] uint32_t lutOffset (4)
   int matchPage = 0;
+  uint32_t pageOffset = 0;
+  std::string snippet;
+
   if (found) {
     file.seek(18);
     uint16_t pc = 0;
@@ -229,8 +275,59 @@ void BookSearchActivity::searchSpineItemBinary(const int spineIndex) {
       file.read(&pos, sizeof(pos));
       if (pos <= matchFileOffset) {
         matchPage = static_cast<int>(p);
+        pageOffset = pos;
       } else {
         break;
+      }
+    }
+
+    // Extract clean page text, then find the sentence containing the match.
+    const std::string pageText = extractPageText(file, pageOffset);
+
+    if (!pageText.empty()) {
+      // Find query position within the clean page text
+      std::string pageLower = pageText;
+      for (char& c : pageLower) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+      const size_t qPos = pageLower.find(queryLower);
+
+      if (qPos != std::string::npos) {
+        const int tLen = static_cast<int>(pageText.size());
+        const int mStart = static_cast<int>(qPos);
+        const int mEnd = mStart + qLen;
+
+        // Walk back to find sentence start
+        int sentStart = 0;
+        for (int i = mStart - 2; i >= 1; i--) {
+          char t = pageText[static_cast<size_t>(i)];
+          if ((t == '.' || t == '!' || t == '?') && pageText[static_cast<size_t>(i + 1)] == ' ') {
+            sentStart = i + 2;
+            break;
+          }
+        }
+
+        // Walk forward to find sentence end
+        int sentEnd = tLen;
+        for (int i = mEnd; i < tLen; i++) {
+          char t = pageText[static_cast<size_t>(i)];
+          if (t == '.' || t == '!' || t == '?') {
+            sentEnd = i + 1;
+            break;
+          }
+        }
+
+        snippet = pageText.substr(static_cast<size_t>(sentStart),
+                                  static_cast<size_t>(sentEnd - sentStart));
+
+        // If sentence too long, cap at 300 chars centered on the match
+        if (static_cast<int>(snippet.size()) > 300) {
+          const int matchInSent = mStart - sentStart;
+          const int capStart = std::max(0, matchInSent - 100);
+          snippet = snippet.substr(static_cast<size_t>(capStart),
+                                   std::min(static_cast<int>(snippet.size()) - capStart, 300));
+        }
+      } else {
+        // Query not found in clean text (e.g. match was in binary metadata) — use page start
+        snippet = pageText.size() > 200 ? pageText.substr(0, 200) : pageText;
       }
     }
   }
