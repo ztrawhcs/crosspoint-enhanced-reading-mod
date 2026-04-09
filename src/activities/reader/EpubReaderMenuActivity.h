@@ -18,6 +18,7 @@ class EpubReaderMenuActivity final : public ActivityWithSubactivity {
     SWAP_CONTROLS,
     SWAP_LANDSCAPE_CONTROLS,
     GO_TO_PERCENT,
+    SEARCH_BOOK,
     GO_HOME,
     SYNC,
     DELETE_CACHE
@@ -57,6 +58,7 @@ class EpubReaderMenuActivity final : public ActivityWithSubactivity {
                                            {MenuAction::SWAP_CONTROLS, StrId::STR_PORTRAIT_CONTROLS},
                                            {MenuAction::SWAP_LANDSCAPE_CONTROLS, StrId::STR_LANDSCAPE_CONTROLS},
                                            {MenuAction::GO_TO_PERCENT, StrId::STR_GO_TO_PERCENT},
+                                           {MenuAction::SEARCH_BOOK, StrId::STR_SEARCH_BOOK},
                                            {MenuAction::GO_HOME, StrId::STR_GO_HOME_BUTTON},
                                            {MenuAction::SYNC, StrId::STR_SYNC_PROGRESS},
                                            {MenuAction::DELETE_CACHE, StrId::STR_DELETE_CACHE}};

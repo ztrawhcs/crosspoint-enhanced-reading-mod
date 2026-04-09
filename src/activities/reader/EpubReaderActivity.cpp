@@ -13,6 +13,7 @@
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "BookSearchActivity.h"
 #include "EpubReaderChapterSelectionActivity.h"
 #include "EpubReaderPercentSelectionActivity.h"
 #include "KOReaderCredentialStore.h"
@@ -1694,6 +1695,23 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
           renderer, mappedInput, initialPercent,
           [this](const int percent) {
             jumpToPercent(percent);
+            exitActivity();
+            requestUpdate();
+          },
+          [this]() {
+            exitActivity();
+            requestUpdate();
+          }));
+      break;
+    }
+    case EpubReaderMenuActivity::MenuAction::SEARCH_BOOK: {
+      exitActivity();
+      enterNewActivity(new BookSearchActivity(
+          renderer, mappedInput, epub,
+          [this](const int spineIndex) {
+            currentSpineIndex = spineIndex;
+            nextPageNumber = 0;
+            section.reset();
             exitActivity();
             requestUpdate();
           },
