@@ -11,20 +11,20 @@
 #include <string>
 #include <vector>
 
+#include "AchievementsStore.h"
+#include "BookSearchActivity.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
-#include "BookSearchActivity.h"
 #include "EpubReaderChapterSelectionActivity.h"
 #include "EpubReaderPercentSelectionActivity.h"
 #include "KOReaderCredentialStore.h"
 #include "KOReaderSyncActivity.h"
 #include "MappedInputManager.h"
-#include "RecentBooksStore.h"
 #include "ReadingStatsStore.h"
-#include "AchievementsStore.h"
-#include "util/AchievementPopupUtils.h"
+#include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/AchievementPopupUtils.h"
 #include "util/HighlightStore.h"  // --- HIGHLIGHT MODE ---
 
 namespace {
@@ -371,7 +371,8 @@ void EpubReaderActivity::loop() {
           if (highlightState.mode != HighlightState::INACTIVE && section && epub) {
             RenderLock lock(*this);
             int curPageIdx = section->currentPage;
-            auto savedHighlights = HighlightStore::loadHighlightsForPage(epub->getTitle(), currentSpineIndex, curPageIdx);
+            auto savedHighlights =
+                HighlightStore::loadHighlightsForPage(epub->getTitle(), currentSpineIndex, curPageIdx);
             int count = 0;
             for (const auto& hl : savedHighlights) {
               // Filter to highlights that span the current page using stored page numbers.
@@ -408,17 +409,7 @@ void EpubReaderActivity::loop() {
 
       if (dispatchTaps >= 2) {
         // Double-tap Power action
-        if (highlightState.mode == HighlightState::INACTIVE) {
-          // Enter CURSOR mode
-          RenderLock lock(*this);
-          highlightState.mode = HighlightState::CURSOR;
-          highlightState.cursorLineIndex = 0;
-          LOG_DBG("ERS", "Highlight mode: entered CURSOR");
-          GUI.drawPopup(renderer, "Highlight Mode");
-          clearPopupTimer = millis() + 800;
-          requestUpdate();
-          return;
-        } else if (highlightState.mode == HighlightState::SELECT) {
+        if (highlightState.mode == HighlightState::SELECT) {
           // Save highlight
           RenderLock lock(*this);
           // Extract highlighted text — may span two pages
@@ -525,16 +516,20 @@ void EpubReaderActivity::loop() {
               // For a 2-page highlight (startPage=X, endPage=X+1) the end page is NOT a
               // middle page, so MIDDLE must not fire there — otherwise it returns full-page
               // bounds and END is never reached, producing a phantom full-page highlight.
-              bool isActuallyMiddle = (hl.startPage != hl.endPage && curPageIdx > hl.startPage && curPageIdx < hl.endPage);
+              bool isActuallyMiddle =
+                  (hl.startPage != hl.endPage && curPageIdx > hl.startPage && curPageIdx < hl.endPage);
               // Same page-range guard as the render path: skip multi-page highlights that
               // are outside their recorded range so cursor-delete can't target a phantom match.
-              if (hl.startPage != hl.endPage &&
-                  (curPageIdx < hl.startPage || curPageIdx > hl.endPage)) continue;
-              bool hlOnPage =
-                  HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::FULL, sl, sc, el, ec) ||
-                  HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::START, sl, sc, el, ec) ||
-                  (isActuallyMiddle && HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::MIDDLE, sl, sc, el, ec)) ||
-                  HighlightStore::findHighlightBounds(*curPage, hl.text, HighlightStore::HighlightPageRole::END, sl, sc, el, ec);
+              if (hl.startPage != hl.endPage && (curPageIdx < hl.startPage || curPageIdx > hl.endPage)) continue;
+              bool hlOnPage = HighlightStore::findHighlightBounds(
+                                  *curPage, hl.text, HighlightStore::HighlightPageRole::FULL, sl, sc, el, ec) ||
+                              HighlightStore::findHighlightBounds(
+                                  *curPage, hl.text, HighlightStore::HighlightPageRole::START, sl, sc, el, ec) ||
+                              (isActuallyMiddle &&
+                               HighlightStore::findHighlightBounds(
+                                   *curPage, hl.text, HighlightStore::HighlightPageRole::MIDDLE, sl, sc, el, ec)) ||
+                              HighlightStore::findHighlightBounds(
+                                  *curPage, hl.text, HighlightStore::HighlightPageRole::END, sl, sc, el, ec);
               if (!hlOnPage) continue;  // not visible on this page — skip
               if (cursorLine >= sl && cursorLine <= el) {
                 HighlightStore::deleteHighlight(epub->getTitle(), hl.spineIndex, hl.startPage, hl.endPage);
@@ -1648,6 +1643,17 @@ void EpubReaderActivity::jumpToPercent(int percent) {
 
 void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action) {
   switch (action) {
+    case EpubReaderMenuActivity::MenuAction::HIGHLIGHT: {
+      exitActivity();
+      {
+        RenderLock lock(*this);
+        highlightState.mode = HighlightState::CURSOR;
+        highlightState.cursorLineIndex = 0;
+      }
+      LOG_DBG("ERS", "Highlight mode: entered CURSOR via menu");
+      requestUpdate();
+      break;
+    }
     case EpubReaderMenuActivity::MenuAction::SELECT_CHAPTER: {
       const int currentP = section ? section->currentPage : 0;
       const int totalP = section ? section->pageCount : 0;
@@ -2179,21 +2185,21 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       // For a 2-page highlight the end page is NOT a middle page — without this guard
       // MIDDLE would unconditionally return full-page bounds before END gets a chance,
       // causing the entire end page to appear highlighted instead of just the sentence end.
-      bool isActuallyMiddle = (hl.startPage != hl.endPage && currentPageIdx > hl.startPage && currentPageIdx < hl.endPage);
+      bool isActuallyMiddle =
+          (hl.startPage != hl.endPage && currentPageIdx > hl.startPage && currentPageIdx < hl.endPage);
       // Page-range guard for multi-page highlights: only attempt to render on pages
       // within the recorded start/end range. Without this, the END role can find the
       // highlight's last words on unrelated pages later in the chapter, producing phantom
       // highlights. Single-page highlights don't need this guard — FULL with two-word
       // phrase matching is tight enough to avoid false positives on unrelated pages.
-      if (hl.startPage != hl.endPage &&
-          (currentPageIdx < hl.startPage || currentPageIdx > hl.endPage))
-        continue;
+      if (hl.startPage != hl.endPage && (currentPageIdx < hl.startPage || currentPageIdx > hl.endPage)) continue;
       if (!HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::FULL, startLine,
                                                startChar, endLine, endChar) &&
           !HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::START, startLine,
                                                startChar, endLine, endChar) &&
-          !(isActuallyMiddle && HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::MIDDLE,
-                                                                    startLine, startChar, endLine, endChar)) &&
+          !(isActuallyMiddle &&
+            HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::MIDDLE, startLine,
+                                                startChar, endLine, endChar)) &&
           !HighlightStore::findHighlightBounds(*page, hl.text, HighlightStore::HighlightPageRole::END, startLine,
                                                startChar, endLine, endChar))
         continue;

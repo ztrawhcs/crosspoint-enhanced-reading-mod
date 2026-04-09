@@ -12,6 +12,7 @@
 class EpubReaderMenuActivity final : public ActivityWithSubactivity {
  public:
   enum class MenuAction {
+    HIGHLIGHT,
     SELECT_CHAPTER,
     ROTATE_SCREEN,
     BUTTON_MOD_SETTINGS,
@@ -52,7 +53,8 @@ class EpubReaderMenuActivity final : public ActivityWithSubactivity {
   };
 
   // Fixed menu layout (order matters for up/down navigation).
-  const std::vector<MenuItem> menuItems = {{MenuAction::SELECT_CHAPTER, StrId::STR_SELECT_CHAPTER},
+  const std::vector<MenuItem> menuItems = {{MenuAction::HIGHLIGHT, StrId::STR_HIGHLIGHT},
+                                           {MenuAction::SELECT_CHAPTER, StrId::STR_SELECT_CHAPTER},
                                            {MenuAction::ROTATE_SCREEN, StrId::STR_ORIENTATION},
                                            {MenuAction::BUTTON_MOD_SETTINGS, StrId::STR_BUTTON_MOD_SETTINGS},
                                            {MenuAction::SWAP_CONTROLS, StrId::STR_PORTRAIT_CONTROLS},
