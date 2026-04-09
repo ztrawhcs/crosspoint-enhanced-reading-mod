@@ -15,7 +15,7 @@
 // ---------------------------------------------------------------------------
 // HTML-stripping searcher used for uncached chapters (phase 2 / opt-in).
 // Streams raw EPUB HTML bytes, strips tags and entities, then slides a match
-// window over the plain text.  Keeps a short context buffer for snippets.
+// window over the plain text.  Keeps a context buffer for full-sentence snippets.
 // ---------------------------------------------------------------------------
 class TextSearchStream : public Print {
  public:
@@ -69,17 +69,35 @@ class TextSearchStream : public Print {
       }
       if (ok) {
         found = true;
-        int start = ctxLen > 45 ? ctxLen - 45 : 0;
+        // Use up to 200 chars of context for a full sentence
+        int start = ctxLen > 200 ? ctxLen - 200 : 0;
         snippet.assign(ctx + start, static_cast<size_t>(ctxLen - start));
+        // Trim leading whitespace
         size_t ns = snippet.find_first_not_of(" \n\r\t");
         if (ns != std::string::npos) snippet = snippet.substr(ns);
+        // Trim to sentence start: find last '. '/'! '/'? ' before end
+        trimToSentenceStart(snippet);
       }
     }
     return 1;
   }
 
  private:
-  static constexpr int CTX_SIZE = 128;
+  static void trimToSentenceStart(std::string& s) {
+    // Walk backwards looking for a sentence terminator followed by space/capital
+    // to find the natural start of the current sentence
+    const int len = static_cast<int>(s.size());
+    for (int i = len - 3; i > 0; i--) {
+      char t = s[static_cast<size_t>(i)];
+      if ((t == '.' || t == '!' || t == '?') && s[static_cast<size_t>(i + 1)] == ' ') {
+        // Start snippet after the terminator+space
+        s = s.substr(static_cast<size_t>(i + 2));
+        return;
+      }
+    }
+  }
+
+  static constexpr int CTX_SIZE = 384;
   static constexpr int MAX_QLEN = 64;
   const std::string& query;
   const size_t qLen;
@@ -122,8 +140,10 @@ void BookSearchActivity::searchSpineItemBinary(const int spineIndex) {
   const int overlap = qLen - 1;
   uint8_t buf[SCAN_CHUNK + MAX_QUERY_LEN] = {};
   int bufStart = 0;
+  uint32_t base = 0;  // absolute file offset of buf[0]
   bool found = false;
   std::string snippet;
+  uint32_t matchFileOffset = 0;
 
   while (!found) {
     const int n = file.read(buf + bufStart, SCAN_CHUNK);
@@ -140,8 +160,11 @@ void BookSearchActivity::searchSpineItemBinary(const int spineIndex) {
       }
       if (ok) {
         found = true;
-        const int ctxStart = std::max(0, i - 25);
-        const int ctxEnd = std::min(total, i + qLen + 25);
+        matchFileOffset = base + static_cast<uint32_t>(i);
+
+        // Extract ~300 printable chars centered on match for a full-sentence snippet
+        const int ctxStart = std::max(0, i - 150);
+        const int ctxEnd = std::min(total, i + qLen + 150);
         bool lastSpace = true;
         for (int k = ctxStart; k < ctxEnd; k++) {
           const char c = static_cast<char>(buf[k]);
@@ -154,18 +177,68 @@ void BookSearchActivity::searchSpineItemBinary(const int spineIndex) {
           }
         }
         if (!snippet.empty() && snippet.back() == ' ') snippet.pop_back();
+
+        // Trim leading whitespace
+        size_t ns = snippet.find_first_not_of(' ');
+        if (ns != std::string::npos && ns > 0) snippet = snippet.substr(ns);
+
+        // Trim to sentence start (find last '. '/'! '/'? ' before match area)
+        const int matchInSnippet = i - ctxStart;  // approximate, pre-normalization
+        const int searchEnd = std::min(matchInSnippet, static_cast<int>(snippet.size()));
+        for (int si = searchEnd - 2; si > 0; si--) {
+          char t = snippet[static_cast<size_t>(si)];
+          if ((t == '.' || t == '!' || t == '?') && snippet[static_cast<size_t>(si + 1)] == ' ') {
+            snippet = snippet.substr(static_cast<size_t>(si + 2));
+            break;
+          }
+        }
       }
     }
 
     if (n < SCAN_CHUNK) break;
-    bufStart = std::min(total, overlap);
-    memmove(buf, buf + total - bufStart, static_cast<size_t>(bufStart));
+    const int newOverlap = std::min(total, overlap);
+    base += static_cast<uint32_t>(total - newOverlap);
+    memmove(buf, buf + total - newOverlap, static_cast<size_t>(newOverlap));
+    bufStart = newOverlap;
+  }
+
+  // Determine which page the match is on by reading the LUT.
+  // Section .bin header layout (HEADER_SIZE = 24 bytes):
+  //   [0]  uint8_t  version
+  //   [1]  int      fontId (4)
+  //   [5]  float    lineCompression (4)
+  //   [9]  bool     extraParagraphSpacing (1)
+  //   [10] uint8_t  paragraphAlignment (1)
+  //   [11] uint16_t viewportWidth (2)
+  //   [13] uint16_t viewportHeight (2)
+  //   [15] bool     hyphenationEnabled (1)
+  //   [16] bool     embeddedStyle (1)
+  //   [17] bool     forceBoldText (1)
+  //   [18] uint16_t pageCount (2)
+  //   [20] uint32_t lutOffset (4)
+  int matchPage = 0;
+  if (found) {
+    file.seek(18);
+    uint16_t pc = 0;
+    file.read(&pc, sizeof(pc));
+    uint32_t lutOffset = 0;
+    file.read(&lutOffset, sizeof(lutOffset));
+    file.seek(lutOffset);
+    for (uint16_t p = 0; p < pc; p++) {
+      uint32_t pos = 0;
+      file.read(&pos, sizeof(pos));
+      if (pos <= matchFileOffset) {
+        matchPage = static_cast<int>(p);
+      } else {
+        break;
+      }
+    }
   }
 
   file.close();
 
   if (found && static_cast<int>(results.size()) < MAX_RESULTS)
-    results.push_back({spineIndex, getChapterTitle(spineIndex), snippet});
+    results.push_back({spineIndex, matchPage, getChapterTitle(spineIndex), snippet});
 }
 
 // Slow path: decompress from EPUB ZIP and search HTML (used for uncached chapters).
@@ -174,8 +247,9 @@ void BookSearchActivity::searchSpineItemHtml(const int spineIndex) {
   if (spineItem.href.empty()) return;
   TextSearchStream stream(queryLower);
   epub->readItemContentsToStream(spineItem.href, stream, 512);
+  // HTML path can't determine exact page number — default to 0 (chapter start)
   if (stream.found && static_cast<int>(results.size()) < MAX_RESULTS)
-    results.push_back({spineIndex, getChapterTitle(spineIndex), stream.snippet});
+    results.push_back({spineIndex, 0, getChapterTitle(spineIndex), stream.snippet});
 }
 
 void BookSearchActivity::startUncachedSearch() {
@@ -224,6 +298,27 @@ void BookSearchActivity::loop() {
       return;
     }
 
+    // Allow navigating partial results while search is in progress
+    if (!results.empty()) {
+      const int total = totalItems();
+      buttonNavigator.onNext([this, total] {
+        selectedResult = ButtonNavigator::nextIndex(selectedResult, total);
+        requestUpdate();
+      });
+      buttonNavigator.onPrevious([this, total] {
+        selectedResult = ButtonNavigator::previousIndex(selectedResult, total);
+        requestUpdate();
+      });
+
+      if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+        if (selectedResult < static_cast<int>(results.size())) {
+          const auto& r = results[static_cast<size_t>(selectedResult)];
+          if (onResult) onResult(r.spineIndex, r.pageNumber);
+        }
+        return;
+      }
+    }
+
     if (!searchUncached) {
       // Phase 1: scan all spines via binary cache
       if (currentSearchSpine < epub->getSpineItemsCount()) {
@@ -231,8 +326,7 @@ void BookSearchActivity::loop() {
         requestUpdate();
       } else {
         selectedResult = 0;
-        state = (results.empty() && uncachedSpines.empty()) ? State::NO_RESULTS : State::RESULTS;
-        if (results.empty() && !uncachedSpines.empty()) state = State::NO_RESULTS;
+        state = results.empty() ? State::NO_RESULTS : State::RESULTS;
         requestUpdate();
       }
     } else {
@@ -265,7 +359,8 @@ void BookSearchActivity::loop() {
       if (isUncachedItem(selectedResult)) {
         startUncachedSearch();
       } else if (selectedResult < static_cast<int>(results.size())) {
-        if (onResult) onResult(results[static_cast<size_t>(selectedResult)].spineIndex);
+        const auto& r = results[static_cast<size_t>(selectedResult)];
+        if (onResult) onResult(r.spineIndex, r.pageNumber);
       }
       return;
     }
@@ -285,35 +380,65 @@ void BookSearchActivity::render(Activity::RenderLock&&) {
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_SEARCH_BOOK));
 
+  const int titleH = renderer.getLineHeight(UI_12_FONT_ID);
+  const int snippetH = renderer.getLineHeight(UI_10_FONT_ID);
+  const int resultItemH = 4 + titleH + 2 + snippetH + 4;  // two-line result row
+  const int simpleItemH = 6 + snippetH + 6;               // single-line row
+
+  const int listEndY = pageHeight - metrics.buttonHintsHeight;
+
   if (state == State::SEARCHING) {
+    // Compact progress block at top
     const std::string progress =
         std::string(tr(STR_SEARCHING)) + " (" +
-        std::to_string(searchUncached ? currentSearchSpine : currentSearchSpine) + "/" +
+        std::to_string(currentSearchSpine) + "/" +
         std::to_string(searchUncached ? static_cast<int>(uncachedSpines.size()) : epub->getSpineItemsCount()) + ")";
-    renderer.drawCenteredText(UI_12_FONT_ID, pageHeight / 2 - 20, progress.c_str());
+
+    int curY = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
+    renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, curY, progress.c_str());
+    curY += snippetH + 4;
 
     if (!results.empty()) {
       const std::string found =
           std::to_string(results.size()) + " match" + (results.size() == 1 ? "" : "es") + " so far";
-      renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 10, found.c_str());
+      renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, curY, found.c_str());
+      curY += snippetH + 4;
+
+      // Draw partial results below progress
+      renderer.drawLine(metrics.contentSidePadding, curY, pageWidth - metrics.contentSidePadding, curY, true);
+      curY += 2;
+
+      for (int i = 0; i < static_cast<int>(results.size()); i++) {
+        if (curY + resultItemH > listEndY) break;
+        const bool sel = (i == selectedResult);
+        if (sel) renderer.fillRect(0, curY, pageWidth - 1, resultItemH, true);
+
+        const std::string truncTitle =
+            renderer.truncatedText(UI_12_FONT_ID, results[static_cast<size_t>(i)].chapterTitle.c_str(),
+                                   pageWidth - 2 * metrics.contentSidePadding, EpdFontFamily::BOLD);
+        renderer.drawText(UI_12_FONT_ID, metrics.contentSidePadding, curY + 4, truncTitle.c_str(), !sel,
+                          EpdFontFamily::BOLD);
+
+        const std::string truncSnippet = renderer.truncatedText(
+            UI_10_FONT_ID, results[static_cast<size_t>(i)].snippet.c_str(),
+            pageWidth - 2 * metrics.contentSidePadding);
+        renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, curY + 4 + titleH + 2, truncSnippet.c_str(),
+                          !sel);
+        curY += resultItemH;
+      }
     }
 
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), results.empty() ? "" : tr(STR_SELECT),
+                                              results.empty() ? "" : tr(STR_DIR_LEFT),
+                                              results.empty() ? "" : tr(STR_DIR_RIGHT));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    if (!results.empty()) GUI.drawSideButtonHints(renderer, ">", "<");
     renderer.displayBuffer();
     return;
   }
 
-  // RESULTS / NO_RESULTS: shared list rendering
-  const int titleH = renderer.getLineHeight(UI_12_FONT_ID);
-  const int snippetH = renderer.getLineHeight(UI_10_FONT_ID);
-  const int resultItemH = 4 + titleH + 2 + snippetH + 4;  // two-line result row
-  const int simpleItemH = 6 + snippetH + 6;               // single-line row (for uncached item)
-
-  const int listStartY = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  const int listEndY = pageHeight - metrics.buttonHintsHeight;
-
-  int curY = listStartY;
+  // RESULTS / NO_RESULTS: full list rendering
+  int curY = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
 
   if (results.empty()) {
     renderer.drawCenteredText(UI_12_FONT_ID, curY + 4, tr(STR_SEARCH_NO_RESULTS));
@@ -343,7 +468,6 @@ void BookSearchActivity::render(Activity::RenderLock&&) {
   if (!searchUncached && !uncachedSpines.empty()) {
     const int uncachedIdx = static_cast<int>(results.size());
     if (curY + simpleItemH <= listEndY) {
-      // Separator line
       renderer.drawLine(metrics.contentSidePadding, curY, pageWidth - metrics.contentSidePadding, curY, true);
       curY += 2;
 

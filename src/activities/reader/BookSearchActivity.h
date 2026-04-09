@@ -18,7 +18,7 @@
  */
 class BookSearchActivity final : public ActivityWithSubactivity {
  public:
-  using OnResultCallback = std::function<void(int spineIndex)>;
+  using OnResultCallback = std::function<void(int spineIndex, int pageNumber)>;
   using OnCancelCallback = std::function<void()>;
 
   explicit BookSearchActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::shared_ptr<Epub> epub,
@@ -36,6 +36,7 @@ class BookSearchActivity final : public ActivityWithSubactivity {
  private:
   struct SearchResult {
     int spineIndex;
+    int pageNumber;  // 0-based page within spine (from section .bin LUT)
     std::string chapterTitle;
     std::string snippet;
   };

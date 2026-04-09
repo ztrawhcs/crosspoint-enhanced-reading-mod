@@ -1714,9 +1714,9 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       exitActivity();
       enterNewActivity(new BookSearchActivity(
           renderer, mappedInput, epub,
-          [this](const int spineIndex) {
+          [this](const int spineIndex, const int pageNumber) {
             currentSpineIndex = spineIndex;
-            nextPageNumber = 0;
+            nextPageNumber = pageNumber;
             section.reset();
             exitActivity();
             requestUpdate();
