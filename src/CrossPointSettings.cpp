@@ -134,59 +134,11 @@ uint8_t CrossPointSettings::writeSettings(FsFile& file, bool count_only) const {
   writer.writeItem(file, forceBoldText);
   writer.writeItem(file, swapPortraitControls);
   writer.writeItem(file, swapLandscapeControls);
-  // Stats and time settings (added for cpr-vcodex merge)
-  writer.writeItem(file, displayDay);
-  writer.writeItem(file, autoSyncDay);
+  // Time/display settings (kept — used by TimeUtils)
   writer.writeItem(file, timeZonePreset);
   writer.writeItem(file, dateFormat);
-  writer.writeItem(file, dailyGoalTarget);
-  writer.writeItem(file, showStatsAfterReading);
-  writer.writeItem(file, achievementsEnabled);
-  writer.writeItem(file, achievementPopups);
   writer.writeItemString(file, sleepDirectory);
   writer.writeItem(file, sleepImageOrder);
-  // Shortcut location/order/visibility settings (added for cpr-vcodex merge)
-  writer.writeItem(file, browseFilesShortcut);
-  writer.writeItem(file, browseFilesShortcutOrder);
-  writer.writeItem(file, browseFilesShortcutVisible);
-  writer.writeItem(file, statsShortcut);
-  writer.writeItem(file, statsShortcutOrder);
-  writer.writeItem(file, statsShortcutVisible);
-  writer.writeItem(file, syncDayShortcut);
-  writer.writeItem(file, syncDayShortcutOrder);
-  writer.writeItem(file, syncDayShortcutVisible);
-  writer.writeItem(file, settingsShortcut);
-  writer.writeItem(file, settingsShortcutOrder);
-  writer.writeItem(file, settingsShortcutVisible);
-  writer.writeItem(file, readingStatsShortcut);
-  writer.writeItem(file, readingStatsShortcutOrder);
-  writer.writeItem(file, readingStatsShortcutVisible);
-  writer.writeItem(file, readingHeatmapShortcut);
-  writer.writeItem(file, readingHeatmapShortcutOrder);
-  writer.writeItem(file, readingHeatmapShortcutVisible);
-  writer.writeItem(file, achievementsShortcut);
-  writer.writeItem(file, achievementsShortcutOrder);
-  writer.writeItem(file, achievementsShortcutVisible);
-  writer.writeItem(file, ifFoundShortcut);
-  writer.writeItem(file, ifFoundShortcutOrder);
-  writer.writeItem(file, ifFoundShortcutVisible);
-  writer.writeItem(file, readMeShortcut);
-  writer.writeItem(file, readMeShortcutOrder);
-  writer.writeItem(file, readMeShortcutVisible);
-  writer.writeItem(file, recentBooksShortcut);
-  writer.writeItem(file, recentBooksShortcutOrder);
-  writer.writeItem(file, recentBooksShortcutVisible);
-  writer.writeItem(file, bookmarksShortcut);
-  writer.writeItem(file, bookmarksShortcutOrder);
-  writer.writeItem(file, bookmarksShortcutVisible);
-  writer.writeItem(file, fileTransferShortcut);
-  writer.writeItem(file, fileTransferShortcutOrder);
-  writer.writeItem(file, fileTransferShortcutVisible);
-  writer.writeItem(file, sleepShortcut);
-  writer.writeItem(file, sleepShortcutOrder);
-  writer.writeItem(file, sleepShortcutVisible);
-  // If Found contact text
-  writer.writeItemString(file, ifFoundText);
 
   return writer.item_count;
 }
@@ -324,22 +276,22 @@ bool CrossPointSettings::loadFromFile() {
 
     serialization::readPod(inputFile, swapLandscapeControls);
     if (++settingsRead >= fileSettingsCount) break;
-    // Stats and time settings (cpr-vcodex merge)
-    serialization::readPod(inputFile, displayDay);
+    // Stats and time settings (cpr-vcodex merge) — some fields removed, dummy reads for backward compat
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // displayDay (removed)
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, autoSyncDay);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // autoSyncDay (removed)
     if (++settingsRead >= fileSettingsCount) break;
     readAndValidate(inputFile, timeZonePreset, 255);
     if (++settingsRead >= fileSettingsCount) break;
     readAndValidate(inputFile, dateFormat, DATE_FORMAT_COUNT);
     if (++settingsRead >= fileSettingsCount) break;
-    readAndValidate(inputFile, dailyGoalTarget, DAILY_GOAL_TARGET_COUNT);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // dailyGoalTarget (removed)
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, showStatsAfterReading);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // showStatsAfterReading (removed)
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, achievementsEnabled);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // achievementsEnabled (removed)
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, achievementPopups);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // achievementPopups (removed)
     if (++settingsRead >= fileSettingsCount) break;
     {
       std::string sleepDirStr;
@@ -350,92 +302,87 @@ bool CrossPointSettings::loadFromFile() {
     if (++settingsRead >= fileSettingsCount) break;
     readAndValidate(inputFile, sleepImageOrder, SLEEP_IMAGE_ORDER_COUNT);
     if (++settingsRead >= fileSettingsCount) break;
-    // Shortcut location/order/visibility settings (cpr-vcodex merge)
-    readAndValidate(inputFile, browseFilesShortcut, 2);
+    // Shortcut fields (removed) — dummy reads for backward compat with old settings files
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // browseFilesShortcut
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, browseFilesShortcutOrder);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // browseFilesShortcutOrder
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, browseFilesShortcutVisible);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // browseFilesShortcutVisible
     if (++settingsRead >= fileSettingsCount) break;
-    readAndValidate(inputFile, statsShortcut, 2);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // statsShortcut
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, statsShortcutOrder);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // statsShortcutOrder
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, statsShortcutVisible);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // statsShortcutVisible
     if (++settingsRead >= fileSettingsCount) break;
-    readAndValidate(inputFile, syncDayShortcut, 2);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // syncDayShortcut
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, syncDayShortcutOrder);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // syncDayShortcutOrder
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, syncDayShortcutVisible);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // syncDayShortcutVisible
     if (++settingsRead >= fileSettingsCount) break;
-    readAndValidate(inputFile, settingsShortcut, 2);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // settingsShortcut
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, settingsShortcutOrder);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // settingsShortcutOrder
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, settingsShortcutVisible);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // settingsShortcutVisible
     if (++settingsRead >= fileSettingsCount) break;
-    readAndValidate(inputFile, readingStatsShortcut, 2);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // readingStatsShortcut
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, readingStatsShortcutOrder);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // readingStatsShortcutOrder
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, readingStatsShortcutVisible);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // readingStatsShortcutVisible
     if (++settingsRead >= fileSettingsCount) break;
-    readAndValidate(inputFile, readingHeatmapShortcut, 2);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // readingHeatmapShortcut
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, readingHeatmapShortcutOrder);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // readingHeatmapShortcutOrder
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, readingHeatmapShortcutVisible);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // readingHeatmapShortcutVisible
     if (++settingsRead >= fileSettingsCount) break;
-    readAndValidate(inputFile, achievementsShortcut, 2);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // achievementsShortcut
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, achievementsShortcutOrder);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // achievementsShortcutOrder
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, achievementsShortcutVisible);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // achievementsShortcutVisible
     if (++settingsRead >= fileSettingsCount) break;
-    readAndValidate(inputFile, ifFoundShortcut, 2);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // ifFoundShortcut
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, ifFoundShortcutOrder);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // ifFoundShortcutOrder
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, ifFoundShortcutVisible);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // ifFoundShortcutVisible
     if (++settingsRead >= fileSettingsCount) break;
-    readAndValidate(inputFile, readMeShortcut, 2);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // readMeShortcut
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, readMeShortcutOrder);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // readMeShortcutOrder
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, readMeShortcutVisible);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // readMeShortcutVisible
     if (++settingsRead >= fileSettingsCount) break;
-    readAndValidate(inputFile, recentBooksShortcut, 2);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // recentBooksShortcut
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, recentBooksShortcutOrder);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // recentBooksShortcutOrder
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, recentBooksShortcutVisible);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // recentBooksShortcutVisible
     if (++settingsRead >= fileSettingsCount) break;
-    readAndValidate(inputFile, bookmarksShortcut, 2);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // bookmarksShortcut
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, bookmarksShortcutOrder);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // bookmarksShortcutOrder
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, bookmarksShortcutVisible);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // bookmarksShortcutVisible
     if (++settingsRead >= fileSettingsCount) break;
-    readAndValidate(inputFile, fileTransferShortcut, 2);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // fileTransferShortcut
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, fileTransferShortcutOrder);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // fileTransferShortcutOrder
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, fileTransferShortcutVisible);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // fileTransferShortcutVisible
     if (++settingsRead >= fileSettingsCount) break;
-    readAndValidate(inputFile, sleepShortcut, 2);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // sleepShortcut
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, sleepShortcutOrder);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // sleepShortcutOrder
     if (++settingsRead >= fileSettingsCount) break;
-    serialization::readPod(inputFile, sleepShortcutVisible);
+    { uint8_t dummy; serialization::readPod(inputFile, dummy); }  // sleepShortcutVisible
     if (++settingsRead >= fileSettingsCount) break;
-    // If Found contact text
-    {
-      std::string ifFoundStr;
-      serialization::readString(inputFile, ifFoundStr);
-      strncpy(ifFoundText, ifFoundStr.c_str(), sizeof(ifFoundText) - 1);
-      ifFoundText[sizeof(ifFoundText) - 1] = '\0';
-    }
+    // ifFoundText (removed) — dummy read
+    { std::string dummy; serialization::readString(inputFile, dummy); }
     if (++settingsRead >= fileSettingsCount) break;
 
   } while (false);
@@ -567,16 +514,3 @@ int CrossPointSettings::getReaderFontId() const {
   }
 }
 
-uint64_t CrossPointSettings::getDailyGoalMs() const {
-  switch (static_cast<DAILY_GOAL_TARGET>(dailyGoalTarget)) {
-    case GOAL_15_MIN:
-      return 15ULL * 60ULL * 1000ULL;
-    case GOAL_30_MIN:
-    default:
-      return 30ULL * 60ULL * 1000ULL;
-    case GOAL_45_MIN:
-      return 45ULL * 60ULL * 1000ULL;
-    case GOAL_60_MIN:
-      return 60ULL * 60ULL * 1000ULL;
-  }
-}

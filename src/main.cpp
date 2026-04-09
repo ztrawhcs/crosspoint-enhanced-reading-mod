@@ -18,17 +18,7 @@
 #include "CrossPointState.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
-#include "AchievementsStore.h"
-#include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
-#include "activities/apps/AchievementsActivity.h"
-#include "activities/apps/AppsActivity.h"
-#include "activities/apps/IfFoundActivity.h"
-#include "activities/apps/ReadMeActivity.h"
-#include "activities/apps/SleepAppActivity.h"
-#include "activities/apps/ReadingHeatmapActivity.h"
-#include "activities/apps/ReadingStatsActivity.h"
-#include "activities/apps/SyncDayActivity.h"
 #include "util/TimeUtils.h"
 #include "activities/boot_sleep/BootActivity.h"
 #include "activities/boot_sleep/SleepActivity.h"
@@ -281,65 +271,10 @@ void onGoToBrowser() {
   enterNewActivity(new OpdsBookBrowserActivity(renderer, mappedInputManager, onGoHome));
 }
 
-void onGoToApps();
-
-void onGoToIfFound() {
-  exitActivity();
-  enterNewActivity(new IfFoundActivity(renderer, mappedInputManager, onGoToApps));
-}
-
-void onGoToReadMe() {
-  exitActivity();
-  enterNewActivity(new ReadMeActivity(renderer, mappedInputManager, onGoToApps));
-}
-
-void onGoToSleepApp() {
-  exitActivity();
-  enterNewActivity(new SleepAppActivity(renderer, mappedInputManager, onGoHome));
-}
-
-void onGoToReadingStats() {
-  exitActivity();
-  enterNewActivity(new ReadingStatsActivity(renderer, mappedInputManager, onGoToApps));
-}
-
-void onGoToSyncDay() {
-  exitActivity();
-  enterNewActivity(new SyncDayActivity(renderer, mappedInputManager, onGoHome));
-}
-
-void onGoToReadingHeatmap() {
-  exitActivity();
-  enterNewActivity(new ReadingHeatmapActivity(renderer, mappedInputManager, onGoHome));
-}
-
-void onGoToAchievements() {
-  exitActivity();
-  enterNewActivity(new AchievementsActivity(renderer, mappedInputManager, onGoHome));
-}
-
-void onGoToApps() {
-  exitActivity();
-  enterNewActivity(new AppsActivity(renderer, mappedInputManager,
-                                    onGoHome,
-                                    onGoToMyLibrary,
-                                    onGoToRecentBooks,
-                                    onGoToReadingStats,
-                                    onGoToSyncDay,
-                                    onGoToReadingHeatmap,
-                                    onGoToAchievements,
-                                    onGoToIfFound,
-                                    onGoToReadMe,
-                                    onGoToFileTransfer,
-                                    onGoToSleepApp,
-                                    onGoToSettings));
-}
-
 void onGoHome() {
   exitActivity();
   enterNewActivity(new HomeActivity(renderer, mappedInputManager, onGoToReader, onGoToMyLibrary, onGoToRecentBooks,
-                                    onGoToSettings, onGoToFileTransfer, onGoToBrowser, onGoToSyncDay,
-                                    onGoToReadingHeatmap, onGoToAchievements));
+                                    onGoToSettings, onGoToFileTransfer, onGoToBrowser));
 }
 
 void setupDisplayAndFonts() {
@@ -438,8 +373,6 @@ void setup() {
 
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
-  READING_STATS.loadFromFile();
-  ACHIEVEMENTS.loadFromFile();
 
   // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
   // crashed (indicated by readerActivityLoadCount > 0)

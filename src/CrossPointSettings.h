@@ -88,14 +88,6 @@ class CrossPointSettings {
   // UI Theme
   enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, LYRA_CUSTOM = 3 };
 
-  enum DAILY_GOAL_TARGET {
-    GOAL_15_MIN = 0,
-    GOAL_30_MIN = 1,
-    GOAL_45_MIN = 2,
-    GOAL_60_MIN = 3,
-    DAILY_GOAL_TARGET_COUNT
-  };
-
   enum DATE_FORMAT {
     DATE_DD_MM_YYYY = 0,
     DATE_MM_DD_YYYY = 1,
@@ -107,11 +99,6 @@ class CrossPointSettings {
     SLEEP_ORDER_SEQUENTIAL = 0,
     SLEEP_ORDER_RANDOM = 1,
     SLEEP_IMAGE_ORDER_COUNT
-  };
-
-  enum SHORTCUT_LOCATION {
-    SHORTCUT_HOME = 0,
-    SHORTCUT_APPS = 1
   };
 
   uint8_t sleepScreen = DARK;
@@ -150,63 +137,13 @@ class CrossPointSettings {
   uint8_t swapLandscapeControls = 0;
   uint8_t highlightModeEnabled = 1;  // --- HIGHLIGHT MODE --- enable/disable highlight feature
 
-  // Stats and time settings (added for cpr-vcodex feature merge)
-  uint8_t displayDay = 0;
-  uint8_t autoSyncDay = 0;
+  // Time settings (kept — used by TimeUtils)
   uint8_t timeZonePreset = 0;
-  uint8_t dateFormat = 0;
-  uint8_t dailyGoalTarget = GOAL_30_MIN;
-  uint8_t showStatsAfterReading = 0;
-  uint8_t achievementsEnabled = 1;
-  uint8_t achievementPopups = 1;
+  uint8_t dateFormat = DATE_DD_MM_YYYY;
 
   // Sleep folder settings
   char sleepDirectory[128] = "";
   uint8_t sleepImageOrder = SLEEP_ORDER_SEQUENTIAL;
-
-  // Shortcut location/order/visibility settings (added for cpr-vcodex merge)
-  uint8_t browseFilesShortcut = SHORTCUT_HOME;
-  uint8_t browseFilesShortcutOrder = 0;
-  uint8_t browseFilesShortcutVisible = 1;
-  uint8_t statsShortcut = SHORTCUT_HOME;
-  uint8_t statsShortcutOrder = 1;
-  uint8_t statsShortcutVisible = 0;
-  uint8_t syncDayShortcut = SHORTCUT_HOME;
-  uint8_t syncDayShortcutOrder = 2;
-  uint8_t syncDayShortcutVisible = 1;
-  uint8_t settingsShortcut = SHORTCUT_HOME;
-  uint8_t settingsShortcutOrder = 3;
-  uint8_t settingsShortcutVisible = 1;
-  uint8_t readingStatsShortcut = SHORTCUT_APPS;
-  uint8_t readingStatsShortcutOrder = 0;
-  uint8_t readingStatsShortcutVisible = 1;
-  uint8_t readingHeatmapShortcut = SHORTCUT_APPS;
-  uint8_t readingHeatmapShortcutOrder = 1;
-  uint8_t readingHeatmapShortcutVisible = 1;
-  uint8_t achievementsShortcut = SHORTCUT_APPS;
-  uint8_t achievementsShortcutOrder = 2;
-  uint8_t achievementsShortcutVisible = 1;
-  // If Found contact text (shown on the If Found screen)
-  char ifFoundText[128] = "";
-
-  uint8_t ifFoundShortcut = SHORTCUT_APPS;
-  uint8_t ifFoundShortcutOrder = 3;
-  uint8_t ifFoundShortcutVisible = 0;
-  uint8_t readMeShortcut = SHORTCUT_APPS;
-  uint8_t readMeShortcutOrder = 4;
-  uint8_t readMeShortcutVisible = 0;
-  uint8_t recentBooksShortcut = SHORTCUT_HOME;
-  uint8_t recentBooksShortcutOrder = 4;
-  uint8_t recentBooksShortcutVisible = 1;
-  uint8_t bookmarksShortcut = SHORTCUT_APPS;
-  uint8_t bookmarksShortcutOrder = 5;
-  uint8_t bookmarksShortcutVisible = 0;
-  uint8_t fileTransferShortcut = SHORTCUT_HOME;
-  uint8_t fileTransferShortcutOrder = 5;
-  uint8_t fileTransferShortcutVisible = 1;
-  uint8_t sleepShortcut = SHORTCUT_APPS;
-  uint8_t sleepShortcutOrder = 6;
-  uint8_t sleepShortcutVisible = 0;
 
   ~CrossPointSettings() = default;
 
@@ -216,7 +153,6 @@ class CrossPointSettings {
     return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;
   }
   int getReaderFontId() const;
-  uint64_t getDailyGoalMs() const;
 
   // If count_only is true, returns the number of settings items that would be written.
   uint8_t writeSettings(FsFile& file, bool count_only = false) const;

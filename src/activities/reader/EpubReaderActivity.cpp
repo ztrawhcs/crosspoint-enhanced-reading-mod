@@ -11,7 +11,6 @@
 #include <string>
 #include <vector>
 
-#include "AchievementsStore.h"
 #include "BookSearchActivity.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -20,11 +19,9 @@
 #include "KOReaderCredentialStore.h"
 #include "KOReaderSyncActivity.h"
 #include "MappedInputManager.h"
-#include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "util/AchievementPopupUtils.h"
 #include "util/HighlightStore.h"  // --- HIGHLIGHT MODE ---
 
 namespace {
@@ -250,7 +247,6 @@ void EpubReaderActivity::onEnter() {
   APP_STATE.openEpubPath = epub->getPath();
   APP_STATE.saveToFile();
   RECENT_BOOKS.addBook(epub->getPath(), epub->getTitle(), epub->getAuthor(), epub->getThumbBmpPath());
-  READING_STATS.beginSession(epub->getPath(), epub->getTitle(), epub->getAuthor(), epub->getThumbBmpPath());
 
   // Trigger first update
   requestUpdate();
@@ -266,9 +262,6 @@ void EpubReaderActivity::onExit() {
   highlightCachedPage = -1;
   // --- HIGHLIGHT MODE ---
 
-  READING_STATS.endSession();
-  ACHIEVEMENTS.recordSessionEnded(READING_STATS.getLastSessionSnapshot());
-  showPendingAchievementPopups(renderer);
   APP_STATE.readerActivityLoadCount = 0;
   APP_STATE.saveToFile();
   section.reset();
@@ -276,7 +269,6 @@ void EpubReaderActivity::onExit() {
 }
 
 void EpubReaderActivity::loop() {
-  READING_STATS.tickActiveSession();
   static bool pendingPowerPageTurn = false;
 
   // --- POPUP AUTO-DISMISS ---

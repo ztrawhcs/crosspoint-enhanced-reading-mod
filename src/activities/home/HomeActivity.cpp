@@ -28,15 +28,6 @@ int HomeActivity::getMenuItemCount() const {
   if (hasOpdsUrl) {
     count++;
   }
-  if (onSyncDayOpen) {
-    count++;  // Sync Day
-  }
-  if (onReadingHeatmapOpen) {
-    count++;  // Reading Heatmap
-  }
-  if (onAchievementsOpen) {
-    count++;  // Achievements
-  }
   return count;
 }
 
@@ -203,9 +194,6 @@ void HomeActivity::loop() {
     const int recentsIdx = idx++;
     const int opdsLibraryIdx = hasOpdsUrl ? idx++ : -1;
     const int fileTransferIdx = idx++;
-    const int syncDayIdx = onSyncDayOpen ? idx++ : -1;
-    const int heatmapIdx = onReadingHeatmapOpen ? idx++ : -1;
-    const int achievementsIdx = onAchievementsOpen ? idx++ : -1;
     const int settingsIdx = idx;
 
     if (selectorIndex < recentBooks.size()) {
@@ -218,12 +206,6 @@ void HomeActivity::loop() {
       onOpdsBrowserOpen();
     } else if (menuSelectedIndex == fileTransferIdx) {
       onFileTransferOpen();
-    } else if (menuSelectedIndex == syncDayIdx) {
-      onSyncDayOpen();
-    } else if (menuSelectedIndex == heatmapIdx) {
-      onReadingHeatmapOpen();
-    } else if (menuSelectedIndex == achievementsIdx) {
-      onAchievementsOpen();
     } else if (menuSelectedIndex == settingsIdx) {
       onSettingsOpen();
     }
@@ -253,21 +235,6 @@ void HomeActivity::render(Activity::RenderLock&&) {
     // Insert OPDS Browser after My Library
     menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
     menuIcons.insert(menuIcons.begin() + 2, Library);
-  }
-
-  if (onSyncDayOpen) {
-    menuItems.insert(menuItems.end() - 1, tr(STR_SYNC_DAY));
-    menuIcons.insert(menuIcons.end() - 1, Wifi);
-  }
-
-  if (onReadingHeatmapOpen) {
-    menuItems.insert(menuItems.end() - 1, tr(STR_READING_TIMELINE));
-    menuIcons.insert(menuIcons.end() - 1, Recent);
-  }
-
-  if (onAchievementsOpen) {
-    menuItems.insert(menuItems.end() - 1, tr(STR_ACHIEVEMENTS));
-    menuIcons.insert(menuIcons.end() - 1, Settings);
   }
 
   GUI.drawButtonMenu(
