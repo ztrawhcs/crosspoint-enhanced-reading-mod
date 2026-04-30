@@ -66,8 +66,8 @@ void RecentBooksActivity::onExit() {
 }
 
 void RecentBooksActivity::loop() {
-  if (subActivity) {
-    subActivity->loop();
+  if (hasPendingResult || subActivity) {
+    ActivityWithSubactivity::loop();
     return;
   }
 

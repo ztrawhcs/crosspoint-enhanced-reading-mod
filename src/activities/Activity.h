@@ -29,9 +29,8 @@ class Activity {
   ActivityWithSubactivity* parentActivity = nullptr;
   ActivityResult pendingActivityResult;
 
-  // Called by subactivities to signal completion to parent
-  void finish();
-  void setResult(ActivityResult&& result);
+  // Allow ActivityWithSubactivity to set parentActivity on child activities
+  friend class ActivityWithSubactivity;
 
  public:
   explicit Activity(std::string name, GfxRenderer& renderer, MappedInputManager& mappedInput)

@@ -4,7 +4,8 @@
 #include <Logging.h>
 #include <Serialization.h>
 
-void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int x, const int y) const {
+void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int x, const int y,
+                       const bool forceBold) const {
   // Validate iterator bounds before rendering
   if (words.size() != wordXpos.size() || words.size() != wordStyles.size()) {
     LOG_ERR("TXB", "Render skipped: size mismatch (words=%u, xpos=%u, styles=%u)\n", (uint32_t)words.size(),
@@ -14,8 +15,18 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
 
   for (size_t i = 0; i < words.size(); i++) {
     const int wordX = wordXpos[i] + x;
-    const EpdFontFamily::Style currentStyle = wordStyles[i];
+    const EpdFontFamily::Style baseStyle = wordStyles[i];
+    // Synthetic bold: draw with base style twice (x and x+1) to avoid metric mismatch.
+    // Word positions are laid out with regular-font metrics; using the real bold font
+    // widens glyphs and causes words to bunch together.
+    const bool syntheticBold = forceBold && !(baseStyle & EpdFontFamily::BOLD);
+    const EpdFontFamily::Style currentStyle = (!syntheticBold && forceBold)
+        ? static_cast<EpdFontFamily::Style>(baseStyle | EpdFontFamily::BOLD)
+        : baseStyle;
     renderer.drawText(fontId, wordX, y, words[i].c_str(), true, currentStyle);
+    if (syntheticBold) {
+      renderer.drawText(fontId, wordX + 1, y, words[i].c_str(), true, currentStyle);
+    }
 
     if ((currentStyle & EpdFontFamily::UNDERLINE) != 0) {
       const std::string& w = words[i];

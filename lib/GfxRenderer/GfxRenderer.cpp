@@ -974,7 +974,13 @@ int GfxRenderer::getSpaceAdvance(const int fontId, const uint32_t leftCp, const 
   // Snapping the combined value avoids the +/-1 px error from snapping each component separately.
   const int32_t kernFP = static_cast<int32_t>(font.getKerning(leftCp, ' ', style)) +
                          static_cast<int32_t>(font.getKerning(' ', rightCp, style));
-  return fp4::toPixel(spaceAdvanceFP + kernFP);
+  int base = fp4::toPixel(spaceAdvanceFP + kernFP);
+  // The v1.2.0 fork tightened bold kerning, causing inter-word gaps to look too narrow.
+  // Add a 2px compensating margin for bold (and bold-italic) styles.
+  if ((style & EpdFontFamily::BOLD) != 0) {
+    base += 2;
+  }
+  return base;
 }
 
 int GfxRenderer::getKerning(const int fontId, const uint32_t leftCp, const uint32_t rightCp,

@@ -358,16 +358,21 @@ void BookSearchActivity::startUncachedSearch() {
 }
 
 void BookSearchActivity::loop() {
-  if (subActivity) {
-    subActivity->loop();
+  if (hasPendingResult || subActivity) {
+    ActivityWithSubactivity::loop();
     return;
   }
 
   if (state == State::ENTER_QUERY) {
-    enterNewActivity(new KeyboardEntryActivity(
-        renderer, mappedInput, tr(STR_SEARCH_ENTER_QUERY), "", MAX_QUERY_LEN, false,
-        [this](const std::string& text) {
-          exitActivity();
+    startActivityForResult(
+        std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_SEARCH_ENTER_QUERY), "",
+                                               MAX_QUERY_LEN, false),
+        [this](const ActivityResult& result) {
+          if (result.isCancelled) {
+            if (onCancel) onCancel();
+            return;
+          }
+          const auto& text = std::get<KeyboardResult>(result.data).text;
           if (text.empty()) {
             if (onCancel) onCancel();
             return;
@@ -381,11 +386,7 @@ void BookSearchActivity::loop() {
           results.clear();
           selectedResult = 0;
           requestUpdate();
-        },
-        [this]() {
-          exitActivity();
-          if (onCancel) onCancel();
-        }));
+        });
     return;
   }
 
@@ -468,7 +469,11 @@ void BookSearchActivity::loop() {
   }
 }
 
-void BookSearchActivity::render(Activity::RenderLock&&) {
+void BookSearchActivity::render(RenderLock&& lock) {
+  if (subActivity) {
+    subActivity->render(std::move(lock));
+    return;
+  }
   renderer.clearScreen();
 
   const auto pageWidth = renderer.getScreenWidth();

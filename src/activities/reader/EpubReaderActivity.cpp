@@ -255,6 +255,14 @@ void EpubReaderActivity::onExit() {
 }
 
 void EpubReaderActivity::loop() {
+  // In 1.2.0, ActivityManager calls currentActivity->loop() directly.
+  // If a sub-activity is open (menu, search, keyboard), delegate to it via the
+  // ActivityWithSubactivity machinery instead of running the reader's own input logic.
+  if (hasPendingResult || subActivity) {
+    ActivityWithSubactivity::loop();
+    return;
+  }
+
   static bool pendingPowerPageTurn = false;
 
   if (!epub) {
@@ -545,16 +553,12 @@ void EpubReaderActivity::loop() {
             // that ENDS this line (returns sentEnd pos, or -1 if none).
             // Shared lambda not available in C++17 easily — use inline logic.
 
-            // Step 1: check cursor line for an internal sentence boundary
+            // Walk backward from the cursor line to find where this sentence began.
+            // (The old Step 1 that snapped to mid-line fss > 0 was wrong: it skipped the
+            // first sentence on lines that contain two sentences, always jumping to the second.)
             {
-              std::string curLineText = HighlightStore::getLineText(*tempPage, selStartLine);
-              int fss = HighlightStore::findFirstSentenceStart(curLineText);
-              if (fss > 0) {
-                selStartChar = fss;
-                // sentence boundary found on this line — done
-              } else {
-                // Step 2: walk backward within current page
-                bool found = false;
+              // Walk backward within current page
+              bool found = false;
                 for (int li = selStartLine - 1; li >= 0 && !found; li--) {
                   std::string lineText = HighlightStore::getLineText(*tempPage, li);
                   int sentEnd = HighlightStore::findLastSentenceEnd(lineText);
@@ -611,7 +615,6 @@ void EpubReaderActivity::loop() {
                   selStartLine = 0;
                   selStartChar = 0;
                 }
-              }
             }
 
             highlightState.selectionStartPage = selStartPage;
@@ -1668,18 +1671,20 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       break;
     }
     case EpubReaderMenuActivity::MenuAction::SEARCH_BOOK: {
-      startActivityForResult(
-          std::make_unique<BookSearchActivity>(renderer, mappedInput, epub),
-          [this](const ActivityResult& result) {
-            if (!result.isCancelled) {
-              const auto& pageResult = std::get<PageResult>(result.data);
-              RenderLock lock(*this);
-              currentSpineIndex = pageResult.spineIndex;
-              nextPageNumber = pageResult.pageNumber;
-              section.reset();
-            }
-            requestUpdate();
-          });
+      auto onResult = [this](const int spineIndex, const int pageNumber) {
+        RenderLock lock(*this);
+        currentSpineIndex = spineIndex;
+        nextPageNumber = pageNumber;
+        section.reset();
+        exitActivity();
+        requestUpdate();
+      };
+      auto onCancel = [this]() {
+        exitActivity();
+        requestUpdate();
+      };
+      enterNewActivity(
+          new BookSearchActivity(renderer, mappedInput, epub, std::move(onResult), std::move(onCancel)));
       break;
     }
     case EpubReaderMenuActivity::MenuAction::DISPLAY_QR: {
@@ -1861,6 +1866,13 @@ void EpubReaderActivity::pageTurn(bool isForwardTurn) {
 
 // TODO: Failure handling
 void EpubReaderActivity::render(RenderLock&& lock) {
+  // In 1.2.0, ActivityManager calls currentActivity->render() directly.
+  // If a sub-activity is open, delegate rendering to it instead of drawing the reader.
+  if (subActivity) {
+    subActivity->render(std::move(lock));
+    return;
+  }
+
   if (!epub) {
     return;
   }
@@ -2092,6 +2104,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     }
   }
 
+  // Declared outside !usedCache so the AA passes (which run unconditionally) can use it too.
+  const bool forceBold = SETTINGS.forceBoldText != 0;
+
   if (!usedCache) {
     if (highlightCachedPage != currentPageIdx) {
       highlightCachedPage = -1;
@@ -2103,7 +2118,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 
     // Font prewarm: scan pass accumulates text, then prewarm, then real render
     auto scope = fcm->createPrewarmScope();
-    page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);  // scan pass
+    page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop, forceBold);  // scan pass
     scope.endScanAndPrewarm();
     fcm->logStats("prewarm");
 
@@ -2111,7 +2126,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     bool imagePageWithAA = page->hasImages() && SETTINGS.textAntiAliasing;
 
     // Draw the normal black text
-    page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
+    page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop, forceBold);
     renderStatusBar();
     fcm->logStats("bw_render");
 
@@ -2487,8 +2502,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       renderer.fillRect(imgX + orientedMarginLeft, imgY + orientedMarginTop, imgW, imgH, false);
       renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 
-      // Re-render page content to restore images into the blanked area
-      page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
+      // Re-render page content to restore images into the blanked area.
+      // Must use same forceBold state as the initial render to avoid glyph mismatch ghosting.
+      page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop, forceBold);
       renderer.displayBuffer(HalDisplay::FAST_REFRESH);
     } else {
       renderer.displayBuffer(HalDisplay::HALF_REFRESH);
@@ -2508,23 +2524,24 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     // Save bw buffer to reset buffer state after grayscale data sync
     renderer.storeBwBuffer();
 
-    // grayscale rendering
+    // grayscale rendering — must use same forceBold state as the BW pass so gray halos
+    // align precisely with the black glyphs already on screen.
     if (SETTINGS.textAntiAliasing && !showHelpOverlay && !isNightMode) {
       renderer.clearScreen(0x00);
       renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
-      page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
+      page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop, forceBold);
       renderer.copyGrayscaleLsbBuffers();
 
       // Render and copy to MSB buffer
       renderer.clearScreen(0x00);
       renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
-      page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
+      page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop, forceBold);
       renderer.copyGrayscaleMsbBuffers();
 
       // display grayscale part
       renderer.displayGrayBuffer();
       renderer.setRenderMode(GfxRenderer::BW);
-      fcm->logStats("gray");
+      renderer.getFontCacheManager()->logStats("gray");
     }
 
     // restore the bw data

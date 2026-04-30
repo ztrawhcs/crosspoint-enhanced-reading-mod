@@ -1,6 +1,7 @@
 #include "Activity.h"
 
 #include "ActivityManager.h"
+#include "ActivityWithSubactivity.h"
 
 void Activity::onEnter() { LOG_DBG("ACT", "Entering activity: %s", name.c_str()); }
 
@@ -21,4 +22,10 @@ void Activity::startActivityForResult(std::unique_ptr<Activity>&& activity, Acti
 
 void Activity::setResult(ActivityResult&& result) { this->result = std::move(result); }
 
-void Activity::finish() { activityManager.popActivity(); }
+void Activity::finish() {
+  if (parentActivity) {
+    parentActivity->finishSubactivity(result);
+  } else {
+    activityManager.popActivity();
+  }
+}

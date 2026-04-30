@@ -48,11 +48,11 @@ void ActivityWithSubactivity::loop() {
   }
 }
 
-void ActivityWithSubactivity::requestUpdate() {
-  if (!subActivity) {
-    Activity::requestUpdate();
-  }
-  // Sub-activity should call their own requestUpdate() from their loop() function
+void ActivityWithSubactivity::requestUpdate(bool immediate) {
+  // Always propagate: in 1.2.0, ActivityManager owns rendering and must always be notified.
+  // render() now delegates to subActivity when one is active, so there's no risk of the
+  // parent overwriting the sub-activity's content.
+  Activity::requestUpdate(immediate);
 }
 
 void ActivityWithSubactivity::onExit() {
@@ -70,7 +70,11 @@ void ActivityWithSubactivity::startActivityForResult(std::unique_ptr<Activity> a
 }
 
 void ActivityWithSubactivity::finishSubactivity(const ActivityResult& result) {
+  // Copy result BEFORE exitActivity() destroys the sub-activity that owns it.
+  // 'result' is a reference into the sub-activity's member; calling exitActivity()
+  // first frees that object, leaving 'result' as a dangling reference.
+  ActivityResult resultCopy = result;
   exitActivity();
-  pendingResult = result;
+  pendingResult = std::move(resultCopy);
   hasPendingResult = true;
 }
