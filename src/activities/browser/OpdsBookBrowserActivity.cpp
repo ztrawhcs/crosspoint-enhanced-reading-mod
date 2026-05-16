@@ -9,6 +9,7 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -38,12 +39,14 @@ void OpdsBookBrowserActivity::onEnter() {
 
 void OpdsBookBrowserActivity::onExit() {
   Activity::onExit();
-
-  // Turn off WiFi when exiting
-  WiFi.mode(WIFI_OFF);
-
   entries.clear();
   navigationHistory.clear();
+
+  if (WiFi.getMode() != WIFI_MODE_NULL) {
+    WiFi.disconnect(false);
+    delay(30);
+    silentRestart();
+  }
 }
 
 void OpdsBookBrowserActivity::loop() {
@@ -379,11 +382,7 @@ void OpdsBookBrowserActivity::onWifiSelectionComplete(const bool connected) {
     requestUpdate(true);  // Force update to show loading state immediately before fetch
     fetchFeed(currentPath);
   } else {
-    LOG_DBG("OPDS", "WiFi selection cancelled/failed");
-    // Force disconnect to ensure clean state for next retry
-    // This prevents stale connection status from interfering
-    WiFi.disconnect();
-    WiFi.mode(WIFI_OFF);
+    // Leave WiFi up; onExit's silent reboot handles teardown without fragmenting.
     state = BrowserState::ERROR;
     errorMessage = tr(STR_WIFI_CONN_FAILED);
     requestUpdate();
