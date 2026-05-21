@@ -155,7 +155,25 @@ constexpr uint32_t SILENT_REBOOT_MAGIC = 0xC1EAB007;
 constexpr uint32_t SILENT_REBOOT_TARGET_HOME = 0;
 constexpr uint32_t SILENT_REBOOT_TARGET_READER = 1;
 
+// How the device is coming back to life, resolved once at boot. Both resume
+// flows suppress the splash and leave the panel holding its pre-boot frame; a
+// plain boot shows the splash. See setup() for the resolution.
+enum class BootResume : uint8_t {
+  Splash,       // cold boot, flash, panic, or plain reboot
+  Silent,       // heap-defrag ESP.restart() (RTC flag; lost on power loss)
+  QuickResume,  // wake from a quick-resume deep sleep (SD flag; survives power loss)
+};
+
+// Latched true once enterDeepSleep() commits to sleeping, before it tears down
+// the current activity. WiFi activities call silentRestart() in onExit() to
+// clear heap fragmentation on the way out, but deep sleep is a full chip reset
+// on wake and already clears the heap, so rebooting here would just power the
+// device back up against the user's sleep gesture. Never cleared:
+// startDeepSleep() does not return, so a set latch only ends at the wakeup reset.
+static bool deepSleepInProgress = false;
+
 void silentRestart() {
+  if (deepSleepInProgress) return;  // sleeping supersedes the heap-defrag reboot
   silentRebootTarget = SILENT_REBOOT_TARGET_HOME;
   silentRebootMagic = SILENT_REBOOT_MAGIC;
   LOG_DBG("MAIN", "Silent restart (target=home)");
@@ -164,6 +182,7 @@ void silentRestart() {
 }
 
 void silentRestartToReader() {
+  if (deepSleepInProgress) return;  // sleeping supersedes the heap-defrag reboot
   silentRebootTarget = SILENT_REBOOT_TARGET_READER;
   silentRebootMagic = SILENT_REBOOT_MAGIC;
   LOG_DBG("MAIN", "Silent restart (target=reader)");
@@ -229,6 +248,9 @@ void enterDeepSleep() {
   APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
   APP_STATE.saveToFile();
 
+  // Commit to sleeping before goToSleep() runs the outgoing activity's onExit():
+  // a WiFi activity would otherwise silentRestart() here and reboot instead.
+  deepSleepInProgress = true;
   activityManager.goToSleep();
 
   display.deepSleep();
@@ -341,20 +363,48 @@ void setup() {
   // First serial output only here to avoid timing inconsistencies for power button press duration verification
   LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
 
-  setupDisplayAndFonts();
+  // Resolve the single boot-presentation decision. Skipping the splash also
+  // skips the panel-clearing pass and the X3 initial-full-sync arming (see
+  // HalDisplay::begin), so the first paint is FAST_REFRESH (~500ms) over the
+  // retained frame and input dispatches against a visible UI.
+  const BootResume resume = isSilentReboot              ? BootResume::Silent
+                            : !APP_STATE.showBootScreen ? BootResume::QuickResume
+                                                        : BootResume::Splash;
 
-  // First paint after silent reboot is HALF_REFRESH (SDK forces it after begin()'s
-  // panel reset); subsequent paints FAST.
-  if (!isSilentReboot) {
-    activityManager.goToBoot();
+  setupDisplayAndFonts(resume != BootResume::Splash);
+
+  switch (resume) {
+    case BootResume::Silent:
+      // Splash skipped: the routing block below picks the target activity; the
+      // panel keeps showing the pre-reboot popup until that first paint lands.
+      break;
+    case BootResume::QuickResume:
+      // One-shot flag: re-arm the splash for the next non-quick-resume boot. Save
+      // before any painting so a hang in the blocking paint path can't strand
+      // us in a quick-resume-with-no-frame loop on the next boot.
+      APP_STATE.showBootScreen = true;
+      APP_STATE.saveToFile();
+      if (loadSleepFrameBuffer()) {
+        // Frame restored: swap the sleep moon for the loading icon.
+        const auto pageHeight = renderer.getScreenHeight();
+        renderer.drawImage(LoadingIcon, 0, pageHeight - LOADINGICON_HEIGHT, LOADINGICON_WIDTH, LOADINGICON_HEIGHT);
+        renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+      } else {
+        activityManager.goToBoot();  // frame file missing, fall back to the splash
+      }
+      break;
+    case BootResume::Splash:
+      activityManager.goToBoot();
+      break;
   }
 
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
 
-  if (isSilentReboot && snapshotTarget == SILENT_REBOOT_TARGET_READER && !APP_STATE.openEpubPath.empty()) {
+  if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_READER &&
+      !APP_STATE.openEpubPath.empty()) {
     activityManager.goToReader(APP_STATE.openEpubPath);
-  } else if (isSilentReboot) {
+  } else if (resume == BootResume::Silent) {
     // target == home (or reader with no open book): land on home — don't fall
     // through to the sleep-wake "resume reader" logic, which fires on stale
     // openEpubPath + lastSleepFromReader from a prior session.
@@ -371,6 +421,23 @@ void setup() {
     APP_STATE.readerActivityLoadCount++;
     APP_STATE.saveToFile();
     activityManager.goToReader(path);
+  }
+
+  if (resume == BootResume::Silent) {
+    // Block until the first paint physically completes. refreshDisplay()
+    // waits on the panel BUSY pin so when this returns the user can see the
+    // new activity. Without the wait, an edge captured by gpio.update()
+    // during boot dispatches against an invisible Home and the default
+    // selectorIndex=0 opens the most-recent book.
+    activityManager.requestUpdateAndWait();
+    // Absorb any button held at this point into currentState as a non-edge:
+    // two gpio.update() calls separated by > InputManager's 5ms debounce
+    // transition the held bit through lastDebounceTime into currentState
+    // without setting pressedEvents, so the first loop()'s own gpio.update()
+    // sees state == currentState and emits nothing.
+    gpio.update();
+    delay(10);
+    gpio.update();
   }
 
   // Ensure we're not still holding the power button before leaving setup
