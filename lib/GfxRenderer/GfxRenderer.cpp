@@ -30,6 +30,8 @@ void GfxRenderer::begin() {
   }
 }
 
+bool GfxRenderer::isFontCacheScanning() const { return fontCacheManager_ && fontCacheManager_->isScanning(); }
+
 void GfxRenderer::insertFont(const int fontId, EpdFontFamily font) { fontMap.insert({fontId, font}); }
 
 // Translate logical (x,y) coordinates to physical panel coordinates based on current orientation
