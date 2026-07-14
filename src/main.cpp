@@ -155,13 +155,18 @@ constexpr uint32_t SILENT_REBOOT_MAGIC = 0xC1EAB007;
 constexpr uint32_t SILENT_REBOOT_TARGET_HOME = 0;
 constexpr uint32_t SILENT_REBOOT_TARGET_READER = 1;
 
-// How the device is coming back to life, resolved once at boot. Both resume
-// flows suppress the splash and leave the panel holding its pre-boot frame; a
-// plain boot shows the splash. See setup() for the resolution.
+// How the device is coming back to life, resolved once at boot. The Silent
+// resume flow suppresses the splash and leaves the panel holding its
+// pre-boot frame; a plain boot shows the splash. See setup() for the
+// resolution.
+// NOTE: upstream also has a QuickResume case (wake from a quick-resume deep
+// sleep, restoring the last screen instead of the sleep image) — that's the
+// 1.4.0 "Quick Resume" feature, which we haven't merged (no showBootScreen /
+// loadSleepFrameBuffer / LoadingIcon in our tree yet). Left out here; add it
+// back if/when Quick Resume itself gets merged.
 enum class BootResume : uint8_t {
-  Splash,       // cold boot, flash, panic, or plain reboot
-  Silent,       // heap-defrag ESP.restart() (RTC flag; lost on power loss)
-  QuickResume,  // wake from a quick-resume deep sleep (SD flag; survives power loss)
+  Splash,  // cold boot, flash, panic, or plain reboot
+  Silent,  // heap-defrag ESP.restart() (RTC flag; lost on power loss)
 };
 
 // Latched true once enterDeepSleep() commits to sleeping, before it tears down
@@ -363,35 +368,20 @@ void setup() {
   // First serial output only here to avoid timing inconsistencies for power button press duration verification
   LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
 
-  // Resolve the single boot-presentation decision. Skipping the splash also
-  // skips the panel-clearing pass and the X3 initial-full-sync arming (see
-  // HalDisplay::begin), so the first paint is FAST_REFRESH (~500ms) over the
-  // retained frame and input dispatches against a visible UI.
-  const BootResume resume = isSilentReboot              ? BootResume::Silent
-                            : !APP_STATE.showBootScreen ? BootResume::QuickResume
-                                                        : BootResume::Splash;
+  // Resolve the single boot-presentation decision.
+  // NOTE: upstream's setupDisplayAndFonts() also takes a "skip splash" bool
+  // that skips the panel-clearing pass and X3 initial-full-sync arming for a
+  // faster (~500ms) first paint on silent reboot. Our setupDisplayAndFonts()
+  // doesn't have that param/capability yet, so we always take the slower
+  // path here — a polish item, not a correctness issue.
+  const BootResume resume = isSilentReboot ? BootResume::Silent : BootResume::Splash;
 
-  setupDisplayAndFonts(resume != BootResume::Splash);
+  setupDisplayAndFonts();
 
   switch (resume) {
     case BootResume::Silent:
       // Splash skipped: the routing block below picks the target activity; the
       // panel keeps showing the pre-reboot popup until that first paint lands.
-      break;
-    case BootResume::QuickResume:
-      // One-shot flag: re-arm the splash for the next non-quick-resume boot. Save
-      // before any painting so a hang in the blocking paint path can't strand
-      // us in a quick-resume-with-no-frame loop on the next boot.
-      APP_STATE.showBootScreen = true;
-      APP_STATE.saveToFile();
-      if (loadSleepFrameBuffer()) {
-        // Frame restored: swap the sleep moon for the loading icon.
-        const auto pageHeight = renderer.getScreenHeight();
-        renderer.drawImage(LoadingIcon, 0, pageHeight - LOADINGICON_HEIGHT, LOADINGICON_WIDTH, LOADINGICON_HEIGHT);
-        renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-      } else {
-        activityManager.goToBoot();  // frame file missing, fall back to the splash
-      }
       break;
     case BootResume::Splash:
       activityManager.goToBoot();
