@@ -5,10 +5,14 @@
 #include <Logging.h>
 #include <WiFi.h>
 #include <esp_sntp.h>
+#include <esp_wifi.h>
 
 #include "KOReaderCredentialStore.h"
 #include "KOReaderDocumentId.h"
 #include "MappedInputManager.h"
+#include "ReaderUtils.h"
+#include "SilentRestart.h"
+#include "activities/ActivityManager.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -38,15 +42,6 @@ void syncTimeWithNTP() {
   } else {
     LOG_DBG("KOSync", "NTP sync timeout, using fallback");
   }
-}
-void wifiOff() {
-  if (esp_sntp_enabled()) {
-    esp_sntp_stop();
-  }
-  WiFi.disconnect(false);
-  delay(100);
-  WiFi.mode(WIFI_OFF);
-  delay(100);
 }
 }  // namespace
 
@@ -172,8 +167,10 @@ void KOReaderSyncActivity::performUpload() {
 
   const auto result = KOReaderSyncClient::updateProgress(progress);
 
+  // Drop the radio while user reads the result; full teardown happens at silent reboot.
+  esp_wifi_stop();
+
   if (result != KOReaderSyncClient::OK) {
-    wifiOff();
     {
       RenderLock lock(*this);
       state = SYNC_FAILED;
@@ -183,7 +180,6 @@ void KOReaderSyncActivity::performUpload() {
     return;
   }
 
-  wifiOff();
   {
     RenderLock lock(*this);
     state = UPLOAD_COMPLETE;
@@ -201,6 +197,9 @@ void KOReaderSyncActivity::onEnter() {
     return;
   }
 
+  // Past this point every path uses WiFi.
+  wifiActivated = true;
+
   // Check if already connected (e.g. from settings page auth)
   if (WiFi.status() == WL_CONNECTED) {
     LOG_DBG("KOSync", "Already connected to WiFi");
@@ -217,7 +216,11 @@ void KOReaderSyncActivity::onEnter() {
 void KOReaderSyncActivity::onExit() {
   Activity::onExit();
 
-  wifiOff();
+  if (wifiActivated) {
+    WiFi.disconnect(false);
+    delay(30);
+    silentRestartToReader();
+  }
 }
 
 void KOReaderSyncActivity::render(RenderLock&&) {
