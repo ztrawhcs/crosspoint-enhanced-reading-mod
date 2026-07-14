@@ -967,7 +967,7 @@ static bool logicalRectToPhysicalBounds(GfxRenderer::Orientation orientation, in
   for (auto& c : corners) {
     int phyX;
     int phyY;
-    rotateCoordinates(orientation, c[0], c[1], &phyX, &phyY, panelWidth, panelHeight);
+    rotateCoordinates(orientation, c[0], c[1], &phyX, &phyY);
     if (phyX < minX) minX = phyX;
     if (phyY < minY) minY = phyY;
     if (phyX > maxX) maxX = phyX;
