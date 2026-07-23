@@ -16,6 +16,7 @@
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
+#include "activities/network/QuickSyncActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -25,6 +26,9 @@ int HomeActivity::getMenuItemCount() const {
     count += recentBooks.size();
   }
   if (hasOpdsUrl) {
+    count++;
+  }
+  if (hasQuickSync) {
     count++;
   }
   return count;
@@ -113,6 +117,10 @@ void HomeActivity::onEnter() {
   // Check if OPDS browser URL is configured
   hasOpdsUrl = strlen(SETTINGS.opdsServerUrl) > 0;
 
+  // Quick Sync is config-gated on an SD file, so it stays invisible on any
+  // device that hasn't been set up for it.
+  hasQuickSync = QuickSyncActivity::isConfigured();
+
   selectorIndex = 0;
 
   const auto& metrics = UITheme::getInstance().getMetrics();
@@ -182,6 +190,7 @@ void HomeActivity::loop() {
     // Calculate dynamic indices based on which options are available
     int idx = 0;
     int menuSelectedIndex = selectorIndex - static_cast<int>(recentBooks.size());
+    const int quickSyncIdx = hasQuickSync ? idx++ : -1;
     const int fileBrowserIdx = idx++;
     const int recentsIdx = idx++;
     const int opdsLibraryIdx = hasOpdsUrl ? idx++ : -1;
@@ -190,6 +199,8 @@ void HomeActivity::loop() {
 
     if (selectorIndex < recentBooks.size()) {
       onSelectBook(recentBooks[selectorIndex].path);
+    } else if (menuSelectedIndex == quickSyncIdx) {
+      onQuickSyncOpen();
     } else if (menuSelectedIndex == fileBrowserIdx) {
       onFileBrowserOpen();
     } else if (menuSelectedIndex == recentsIdx) {
@@ -237,6 +248,12 @@ void HomeActivity::render(RenderLock&&) {
     menuIcons.insert(menuIcons.begin() + 2, Library);
   }
 
+  if (hasQuickSync) {
+    // Quick Sync leads the menu - it's the one-tap entry point.
+    menuItems.insert(menuItems.begin(), tr(STR_QUICK_SYNC));
+    menuIcons.insert(menuIcons.begin(), Wifi);
+  }
+
   GUI.drawButtonMenu(
       renderer,
       Rect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.verticalSpacing, pageWidth,
@@ -271,3 +288,5 @@ void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
 void HomeActivity::onFileTransferOpen() { activityManager.goToFileTransfer(); }
 
 void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }
+
+void HomeActivity::onQuickSyncOpen() { activityManager.goToQuickSync(); }

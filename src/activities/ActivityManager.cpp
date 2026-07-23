@@ -9,6 +9,7 @@
 #include "home/HomeActivity.h"
 #include "home/RecentBooksActivity.h"
 #include "network/CrossPointWebServerActivity.h"
+#include "network/QuickSyncActivity.h"
 #include "reader/ReaderActivity.h"
 #include "settings/SettingsActivity.h"
 #include "util/FullScreenMessageActivity.h"
@@ -180,6 +181,8 @@ void ActivityManager::goToRecentBooks() {
 void ActivityManager::goToBrowser() {
   replaceActivity(std::make_unique<OpdsBookBrowserActivity>(renderer, mappedInput));
 }
+
+void ActivityManager::goToQuickSync() { replaceActivity(std::make_unique<QuickSyncActivity>(renderer, mappedInput)); }
 
 void ActivityManager::goToReader(std::string path) {
   replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path)));
